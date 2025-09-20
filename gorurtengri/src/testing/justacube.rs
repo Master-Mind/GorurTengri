@@ -1,21 +1,6 @@
-use bevy::app::Update;
-use bevy::app::Startup;
-use bevy::asset::{Assets, RenderAssetUsages};
-use bevy::color::Color;
-use bevy::color::palettes::basic::SILVER;
-use bevy::DefaultPlugins;
-use bevy::gltf::GltfAssetLabel::Material;
-use bevy::image::Image;
-use bevy::math::Vec3;
-use bevy::pbr::{MeshMaterial3d, PointLight, StandardMaterial};
-use bevy::prelude::{App, Camera3d, Commands, Cuboid, Cylinder, Mesh, Mesh3d, Meshable, Plane3d, Res, ResMut, Transform};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy::time::Time;
-use bevy::utils::default;
-use bevy_rapier3d::dynamics::RigidBody;
-use bevy_rapier3d::geometry::Collider;
-use bevy_rapier3d::prelude::{NoUserData, RapierDebugRenderPlugin, RapierPhysicsPlugin};
-use rand::Rng;
+mod justacube;
+
+
 
 /// Creates a colorful test pattern
 fn uv_debug_texture() -> Image {
@@ -48,7 +33,6 @@ fn uv_debug_texture() -> Image {
 
 //fn just_a_cube(time: Res<Time>) {
 //}
-
 fn just_a_cube_setup(mut commands: Commands,
                      mut meshes: ResMut<Assets<Mesh>>,
                      mut images: ResMut<Assets<Image>>,
@@ -89,7 +73,7 @@ fn just_a_cube_setup(mut commands: Commands,
     let range = 10.0;
 
     // Dynamic physics object with a collision shape and initial angular velocity
-    for i in 0..1000 {
+    for i in 0..100 {
         commands.spawn((
             RigidBody::Dynamic,
             Collider::cuboid(0.5, 0.5, 0.5),
@@ -99,21 +83,17 @@ fn just_a_cube_setup(mut commands: Commands,
         ));
     }
 
+    commands
+        .spawn(RigidBody::KinematicPositionBased)
+        .insert(Collider::ball(0.5))
+        .insert(Transform::default())
+        .insert(KinematicCharacterController {
+            ..KinematicCharacterController::default()
+        }).insert(Camera3d::default());
+
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 70., 140.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
     ));
 
-}
-
-pub fn app() -> i32 {
-    println!("got here main");
-    App::new()
-        .add_plugins((DefaultPlugins))
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugins(RapierDebugRenderPlugin::default())
-        .add_systems(Startup, just_a_cube_setup)
-        //.add_systems(Update, just_a_cube)
-        .run();
-    0
 }
