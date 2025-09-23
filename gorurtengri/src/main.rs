@@ -36,7 +36,7 @@ fn game_setup(mut commands: Commands,
 
     // Static physics object with a collision shape
     commands.spawn((
-        //Collider::cylinder(0.1, 100.0),
+        Collider::cylinder(0.1, 100.0),
         Mesh3d(meshes.add(Cylinder::new(100.0, 0.1))),
         MeshMaterial3d(materials.add(Color::WHITE)),
     ));
@@ -47,20 +47,20 @@ fn game_setup(mut commands: Commands,
     // Dynamic physics object with a collision shape and initial angular velocity
     for _i in 0..10 {
         commands.spawn((
-            //RigidBody::Dynamic,
-            //Collider::cuboid(0.5, 0.5, 0.5),
+            RigidBody::Dynamic,
+            Collider::cuboid(0.5, 0.5, 0.5),
             Mesh3d(meshes.add(Cuboid::from_length(1.0))),
             MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
             Transform::from_xyz(rng.random_range(-range..range), rng.random_range(0.0..range),rng.random_range(-range..range)),
         ));
     }
 
-    //player_setup(&mut commands);
+    player_setup(&mut commands);
     //debug camera, should be commented out most of the time
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(0.0, 70., 140.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
-    ));
+    //commands.spawn((
+    //    Camera3d::default(),
+    //    Transform::from_xyz(0.0, 70., 140.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
+    //));
 }
 
 pub fn main() {
@@ -69,17 +69,17 @@ pub fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                //canvas: Some("#bevy-canvas".into()),
+                canvas: Some("#bevy-canvas".into()),
                 // On web, size follows the CSS size (100% x 100%)
                 ..default()
             }),
             ..default()
         }))
-        //.add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        //.add_plugins(RapierDebugRenderPlugin::default())
-        //.add_plugins(TnuaRapier3dPlugin::default())
-        //.add_plugins(TnuaControllerPlugin::default())
-        //.add_plugins(TnuaCrouchEnforcerPlugin::default())
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(RapierDebugRenderPlugin::default())
+        .add_plugins(TnuaRapier3dPlugin::default())
+        .add_plugins(TnuaControllerPlugin::default())
+        .add_plugins(TnuaCrouchEnforcerPlugin::default())
         .add_plugins(FpsOverlayPlugin{
             config: FpsOverlayConfig {
                 text_config: TextFont {
@@ -99,6 +99,6 @@ pub fn main() {
             },
         })
         .add_systems(Startup, game_setup)
-        //.add_systems(Update, player_update)
+        .add_systems(Update, player_update)
         .run();
 }
