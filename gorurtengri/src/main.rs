@@ -1,12 +1,15 @@
+use std::f32::consts::PI;
 use bevy::app::Update;
 use bevy::app::Startup;
 use bevy::asset::{Assets};
 use bevy::color::Color;
 use bevy::DefaultPlugins;
-use bevy::pbr::{MeshMaterial3d, PointLight, StandardMaterial};
-use bevy::prelude::{App, Camera3d, Commands, Cuboid, Cylinder, Mesh, Mesh3d, PluginGroup, ResMut, TextFont, Transform, Vec3, Window, WindowPlugin};
+use bevy::pbr::{DirectionalLight, MeshMaterial3d, PointLight, StandardMaterial};
+use bevy::pbr::LightEntity::Directional;
+use bevy::prelude::{AmbientLight, App, Camera3d, ClearColor, Commands, Cuboid, Cylinder, Mesh, Mesh3d, PluginGroup, Quat, ResMut, TextFont, Transform, Vec3, Window, WindowPlugin};
 use bevy::text::FontSmoothing;
 use bevy::utils::default;
+use bevy_atmosphere::prelude::AtmospherePlugin;
 use bevy_rapier3d::dynamics::RigidBody;
 use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::prelude::{NoUserData, RapierDebugRenderPlugin, RapierPhysicsPlugin};
@@ -18,20 +21,15 @@ use rand::Rng;
 use crate::characters::player::{player_setup, player_update};
 
 mod characters;
+mod eco;
 
 fn game_setup(mut commands: Commands,
-                     mut meshes: ResMut<Assets<Mesh>>,
-                     mut materials: ResMut<Assets<StandardMaterial>>) {
+              mut meshes: ResMut<Assets<Mesh>>,
+              mut materials: ResMut<Assets<StandardMaterial>>) {
 
     commands.spawn((
-        PointLight {
-            shadows_enabled: true,
-            intensity: 10_000_000.,
-            range: 100.0,
-            shadow_depth_bias: 0.2,
-            ..default()
-        },
-        Transform::from_xyz(8.0, 16.0, 8.0),
+        DirectionalLight::default(),
+        Transform::from_xyz(8.0, 16.0, 8.0).with_rotation(Quat::from_rotation_x(-PI / 4.)),
     ));
 
     // Static physics object with a collision shape
@@ -75,6 +73,8 @@ pub fn main() {
             }),
             ..default()
         }))
+        .insert_resource(ClearColor(Color::srgb_u8(135, 206, 235)))
+        .add_plugins(AtmospherePlugin)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(TnuaRapier3dPlugin::default())
@@ -98,6 +98,7 @@ pub fn main() {
                 enabled: true,
             },
         })
+        .add_plugins(eco::eco::EcoPlugin)
         .add_systems(Startup, game_setup)
         .add_systems(Update, player_update)
         .run();

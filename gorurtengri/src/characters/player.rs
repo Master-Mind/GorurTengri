@@ -1,7 +1,8 @@
+use bevy::core_pipeline::experimental::taa::TemporalAntiAliasing;
 use bevy::input::ButtonInput;
 use bevy::input::mouse::MouseMotion;
 use bevy::math::{Dir3, Quat, Vec3, Vec2};
-use bevy::prelude::{Camera3d, Commands, Component, EventReader, KeyCode, Query, Res, Touches, Transform, Window, With, Without};
+use bevy::prelude::{Camera3d, Commands, Component, EventReader, KeyCode, Msaa, Query, Res, Touches, Transform, Window, With, Without};
 use bevy::window::PrimaryWindow;
 use bevy_rapier3d::dynamics::RigidBody;
 use bevy_rapier3d::geometry::Collider;
@@ -12,6 +13,8 @@ use bevy_tnua::{TnuaGhostSensor, TnuaObstacleRadar};
 use bevy_tnua::math::{float_consts};
 use bevy_tnua_rapier3d::TnuaRapier3dSensorShape;
 use bevy::input::gamepad::*;
+use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy_atmosphere::prelude::AtmosphereCamera;
 
 #[derive(Component)]
 pub struct FPSLook {
@@ -157,5 +160,9 @@ pub fn player_setup(commands: &mut Commands){
     }),
     TnuaGhostSensor::default())).with_child((Transform::from_xyz(0.0, 0.0, 0.0),
                     Camera3d::default(),
+                     Msaa::Off,
+                     TemporalAntiAliasing::default(),
+                     ScreenSpaceAmbientOcclusion::default(),
+                     AtmosphereCamera::default(),
                     FPSLook{pitch:0.0, yaw:0.0}));
 }
