@@ -1,29 +1,56 @@
 import Jolt from "jolt-physics";
-import { onMount, createSignal } from "solid-js";
+import { onMount, createSignal, createEffect, onCleanup, Show } from "solid-js";
 import * as THREE from "three";
 import { PhysiBox } from "~/gamelib/objects";
 import { joltworld, jolt } from "~/gamelib/physics-general";
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Player } from "~/gamelib/characters/player";
 import { randFloatSpread } from "three/src/math/MathUtils.js";
+import { InputManager } from "~/gamelib/utils/input";
+import FPSCounter from "./FPSCounter";
+import PauseScreen from "./PauseScreen";
+
+const [rect, setRect] = createSignal({
+  height: window.innerHeight,
+  width: window.innerWidth
+});
+
+const [paused, setPaused] = createSignal(false);
+
+const resizeHandler = (event : Event) => {
+  setRect({ height: window.innerHeight, width: window.innerWidth });
+};
 
 export default function GameCanvas() {
     let canvasRef !: HTMLCanvasElement;
     const [fps, setFps] = createSignal(0);
 
-    onMount(() => {
-        
-        console.log("mounted");
-        const scene = new THREE.Scene();
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+    let player = new Player(rect().width, rect().height);
+    const boxes : PhysiBox[] = [
+    ];
+    const staticbox = new PhysiBox(true);
+    let animationFrameId = 0;
+    let renderer : THREE.WebGLRenderer;
+    let scene :THREE.Scene;
 
-        const renderer = new THREE.WebGLRenderer({ canvas: canvasRef, antialias: true });
-        renderer.setSize(width, height);
+    onMount(() => {
+        window.addEventListener('resize', resizeHandler);        
+        console.log("mounted");
+        scene = new THREE.Scene();
+
+        renderer = new THREE.WebGLRenderer({ canvas: canvasRef, antialias: true });
+        renderer.setSize(rect().width, rect().height);
         renderer.setPixelRatio(window.devicePixelRatio);
         
-        let player = new Player(width, height);
-        player.init(new jolt.RVec3(0, 1, -10));
+        let inputman = new InputManager(canvasRef);
+        inputman.subToPause(()=>{setPaused(!paused())})
+        player.init(inputman, new jolt.RVec3(0, 1, -10));
+
+        createEffect(() => {
+            renderer.setSize(rect().width, rect().height);
+            player.updateView(rect().width, rect().height);
+            console.log(`Changed resolution: ${rect().width} ${rect().height}`)
+        })
 
         const sky = new Sky();
         sky.scale.setScalar( 450000 );
@@ -44,8 +71,6 @@ export default function GameCanvas() {
         const light = new THREE.HemisphereLight( 0xffffbb, 0x080820, 1 );
         scene.add( light );
 
-        const boxes : PhysiBox[] = [
-        ];
 
         for (let index = 0; index < 10; index++) {
             const box = new PhysiBox(false);
@@ -53,17 +78,18 @@ export default function GameCanvas() {
             box.init(scene, new jolt.RVec3(randFloatSpread(5), randFloatSpread(5) + 5, randFloatSpread(5)));
         }
 
-        const staticbox = new PhysiBox(true);
         staticbox.init(scene, new jolt.RVec3(0, -4, 0), new jolt.Vec3(100, 1, 100));
 
         let clock = new THREE.Clock();
-        let frameCount = 0;
-        let lastTime = performance.now();
+        let fpsTimer = 0;
 
         function animate() {
-            let dt = Math.min(clock.getDelta(),  1 / 30);
-            requestAnimationFrame(animate);
+            let realDT = Math.min(clock.getDelta(),  1 / 30);
+            let dt = paused() ? 0 : realDT;
+            animationFrameId = requestAnimationFrame(animate);
             joltworld.Step(dt, 1);
+
+            inputman.dispatch();
 
             for (let index = 0; index < boxes.length; index++) {
                 boxes[index].update();
@@ -71,33 +97,46 @@ export default function GameCanvas() {
             player.update(dt);
             renderer.render(scene, player.camera);
 
-            // Update FPS counter
-            frameCount++;
-            const currentTime = performance.now();
-            if (currentTime >= lastTime + 1000) {
-                setFps(Math.round((frameCount * 1000) / (currentTime - lastTime)));
-                frameCount = 0;
-                lastTime = currentTime;
+            fpsTimer += realDT;
+
+            if (fpsTimer >= 0.3)
+            {
+                fpsTimer = 0;
+                // Update FPS counter
+                setFps(Math.round(1 / realDT));
             }
         }
         animate();
     });
 
-    return <div style={{ position: "relative" }}>
-         <canvas ref={canvasRef} width={600} height={600} />
-         <div style={{
-             position: "absolute",
-             top: "10px",
-             left: "10px",
-             color: "white",
-             "font-family": "monospace",
-             "font-size": "16px",
-             "text-shadow": "1px 1px 2px black",
-             "background-color": "rgba(0, 0, 0, 0.5)",
-             padding: "5px 10px",
-             "border-radius": "5px"
-         }}>
-             FPS: {fps()}
-         </div>
+    onCleanup(()=> {
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+        }
+
+        player.deinit(scene);
+        //player.destroy();
+        
+        boxes.forEach((box) => {
+            box.deinit(scene);
+            //box.destroy(); 
+        });
+
+        staticbox.deinit(scene);
+        //staticbox.destroy();
+
+        renderer.dispose();
+    });
+
+    function onUnpause() {
+        setPaused(false);
+    }
+
+    return <div >
+         <canvas ref={canvasRef} width={rect().width} height={rect().height} tabIndex={1} />
+         <Show when={paused()}>
+            <PauseScreen onUnpause={onUnpause}/>
+         </Show>
+         <FPSCounter fps={fps()}/>
     </div>
 }

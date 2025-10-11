@@ -6,5 +6,6 @@ export default defineConfig({
         rollupConfig: {
             external: ["node:async_hooks"]
         }
-    }
+    },
+    ssr: false
 });

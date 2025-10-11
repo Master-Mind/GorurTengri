@@ -42,6 +42,10 @@ export class PhysiBox {
         scene.remove(this.visibox);
     }
 
+    destroy() {
+        jolt.destroy(this.physibox);
+    }
+
 
     visibox: THREE.Mesh;
     physibox: Jolt.Body;
