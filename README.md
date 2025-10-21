@@ -26,7 +26,7 @@ By contrast, learning web dev feels a lot like learning Mandarin in the sense th
 2. Memorize 1,000,000 symbols
 3. Memorize a confusing web of terms like "flexbox"
 4. Read 2,500,000 pages of the Daoist cannon
-5. Climb to the highest point of San Francisco while reciting the 77 koans of Linus Torvalds
+5. Climb to the highest point of San Francisco on your knees while reciting the 77 koans of Linus Torvalds
 
 I'm exaggerating, but only a little bit.
 

@@ -72,7 +72,7 @@ export class Player {
     updateSettings: Jolt.ExtendedUpdateSettings;
     curmove = new THREE.Vector2();
     curlook = new THREE.Vector2();
-    turnSpeed = 10;
+    turnSpeed = 3;
     moveSpeed = 10;
     //tried getting the rotation from the character but it didn't work
     //radians

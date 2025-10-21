@@ -1,14 +1,15 @@
 import Jolt from "jolt-physics";
 import { onMount, createSignal, createEffect, onCleanup, Show } from "solid-js";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
 import { PhysiBox } from "~/gamelib/objects";
 import { joltworld, jolt } from "~/gamelib/physics-general";
-import { Sky } from 'three/addons/objects/Sky.js';
 import { Player } from "~/gamelib/characters/player";
 import { randFloatSpread } from "three/src/math/MathUtils.js";
 import { InputManager } from "~/gamelib/utils/input";
 import FPSCounter from "./FPSCounter";
 import PauseScreen from "./PauseScreen";
+import { InitLighting } from "~/gamelib/eco/lighting";
+import { InitTerrain } from "~/gamelib/eco/terrrain";
 
 const [rect, setRect] = createSignal({
   height: window.innerHeight,
@@ -23,6 +24,29 @@ const resizeHandler = (event : Event) => {
 
 export default function GameCanvas() {
     let canvasRef !: HTMLCanvasElement;
+    
+    function captureMouse() {
+        //copy pasted from mdn
+        const promise = canvasRef.requestPointerLock({
+            unadjustedMovement: true,
+        });
+
+        if (!promise) {
+            console.log("disabling mouse acceleration is not supported");
+            return;
+        }
+
+        return promise
+            .then(() => console.log("pointer is locked"))
+            .catch((error) => {
+            if (error.name === "NotSupportedError") {
+                // Some platforms may not support unadjusted movement.
+                // You can request again a regular pointer lock.
+                return canvasRef.requestPointerLock();
+            }
+            });
+    }
+
     const [fps, setFps] = createSignal(0);
 
     let player = new Player(rect().width, rect().height);
@@ -30,7 +54,7 @@ export default function GameCanvas() {
     ];
     const staticbox = new PhysiBox(true);
     let animationFrameId = 0;
-    let renderer : THREE.WebGLRenderer;
+    let renderer : THREE.WebGPURenderer;
     let scene :THREE.Scene;
 
     onMount(() => {
@@ -38,52 +62,44 @@ export default function GameCanvas() {
         console.log("mounted");
         scene = new THREE.Scene();
 
-        renderer = new THREE.WebGLRenderer({ canvas: canvasRef, antialias: true });
+        renderer = new THREE.WebGPURenderer({ canvas: canvasRef, antialias: true });
+        console.log("inited")
         renderer.setSize(rect().width, rect().height);
         renderer.setPixelRatio(window.devicePixelRatio);
+
+        canvasRef.addEventListener('click', async () => {
+            captureMouse();
+        });
         
         let inputman = new InputManager(canvasRef);
-        inputman.subToPause(()=>{setPaused(!paused())})
+        inputman.subToPause(()=>{
+            document.exitPointerLock();
+            setPaused(!paused());
+        });
         player.init(inputman, new jolt.RVec3(0, 1, -10));
 
         createEffect(() => {
             renderer.setSize(rect().width, rect().height);
             player.updateView(rect().width, rect().height);
             console.log(`Changed resolution: ${rect().width} ${rect().height}`)
-        })
+        });
 
-        const sky = new Sky();
-        sky.scale.setScalar( 450000 );
-
-        const phi = THREE.MathUtils.degToRad( -45 );
-        const theta = THREE.MathUtils.degToRad( 180 );
-        const sunPosition = new THREE.Vector3().setFromSphericalCoords( 1, phi, theta );
-        const sun = new THREE.DirectionalLight();
-        sun.translateX(sunPosition.x);
-        sun.translateY(sunPosition.y);
-        sun.translateZ(sunPosition.z);
-        scene.add(sun);
-
-        sky.material.uniforms.sunPosition.value = sunPosition;
-
-        scene.add( sky );
-
-        const light = new THREE.HemisphereLight( 0xffffbb, 0x080820, 1 );
-        scene.add( light );
-
+        InitLighting(scene);
+        InitTerrain(renderer, scene);
 
         for (let index = 0; index < 10; index++) {
-            const box = new PhysiBox(false);
-            boxes.push(box);
-            box.init(scene, new jolt.RVec3(randFloatSpread(5), randFloatSpread(5) + 5, randFloatSpread(5)));
+            //const box = new PhysiBox(false);
+            //boxes.push(box);
+            //box.init(scene, new jolt.RVec3(randFloatSpread(5), randFloatSpread(5) + 5, randFloatSpread(5)));
         }
 
-        staticbox.init(scene, new jolt.RVec3(0, -4, 0), new jolt.Vec3(100, 1, 100));
+        staticbox.init(scene, new jolt.RVec3(0, -4, -10), new jolt.Vec3(1, 1, 1));
 
         let clock = new THREE.Clock();
         let fpsTimer = 0;
 
-        function animate() {
+        async function animate() {
+        //console.log("rendering")
             let realDT = Math.min(clock.getDelta(),  1 / 30);
             let dt = paused() ? 0 : realDT;
             animationFrameId = requestAnimationFrame(animate);
@@ -95,7 +111,7 @@ export default function GameCanvas() {
                 boxes[index].update();
             }
             player.update(dt);
-            renderer.render(scene, player.camera);
+            await renderer.renderAsync(scene, player.camera);
 
             fpsTimer += realDT;
 
@@ -129,11 +145,14 @@ export default function GameCanvas() {
     });
 
     function onUnpause() {
+        captureMouse()
         setPaused(false);
     }
 
     return <div >
-         <canvas ref={canvasRef} width={rect().width} height={rect().height} tabIndex={1} />
+         <canvas ref={canvasRef} width={rect().width} height={rect().height} tabIndex={1} style={{
+            'cursor':paused() ? 'default' : 'none'
+         }}/>
          <Show when={paused()}>
             <PauseScreen onUnpause={onUnpause}/>
          </Show>
