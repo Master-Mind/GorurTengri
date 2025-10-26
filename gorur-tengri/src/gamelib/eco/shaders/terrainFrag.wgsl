@@ -1,6 +1,4 @@
-fn frag_main(uv : vec2f, 
-    writeTex: ptr<storage, array<f32>, read>,
-    worldWidth: f32,
+fn frag_main(
     vNormal: vec3f) -> vec4f {
 
     //var texPos = uv;

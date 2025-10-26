@@ -3,9 +3,11 @@ import GameCanvas from "~/components/GameCanvas";
 
 export default function Home() {
   return (
-    <main>
-      <Title>Gorur Tengri</Title>
-      <GameCanvas />
-    </main>
+    <>
+      <main>
+        <Title>Gorur Tengri</Title>
+        <GameCanvas />
+      </main>
+    </>
   );
 }

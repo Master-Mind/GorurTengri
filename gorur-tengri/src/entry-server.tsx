@@ -7,7 +7,8 @@ export default createHandler(() => (
       <html lang="en">
         <head>
           <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1.0, user-scalable=no" />
+          <meta name="HandheldFriendly" content="true" />
           <link rel="icon" href="/favicon.ico" />
           {assets}
         </head>

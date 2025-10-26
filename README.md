@@ -30,6 +30,8 @@ By contrast, learning web dev feels a lot like learning Mandarin in the sense th
 
 I'm exaggerating, but only a little bit.
 
+I've had to use AI to help me debug a few problems every now and then. Three.js, Jolt.js, and a few other libraries have the misfortune of having some resources be garbage collected and some require manual deposal, i.e. storage buffers must be manually freed, but attributes are garbage collected. I haven't figured out a rhyme or reason for this distinction quite yet, so I still ask chatgpt which ones need disposal
+
 Add the Twitter Driven Development mindset most web devs have where they're constantly changing the "recommended" stack, and it's no wonder why newbies get so discouraged (well, that and the job market).
 
 "Have you seen the new Javascript framework? It's a fork of Tubu. It's literally a dialect of Heebee. It's hosted on Poodee with ads. It a dependency of Dippy. You can probably pull it from Weeno. Dude it's the successor of Gumpy. It's a Pheebo original. It's hosted on Poob. You can host it on Poob. You can go to Poob and host it. Log onto Poob right now. Go to Poob. Dive into Poob. You can Poob it. It's hosted on Poob. Poob has it for you. Poob has it for you.

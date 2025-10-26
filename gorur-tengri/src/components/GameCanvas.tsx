@@ -9,7 +9,7 @@ import { InputManager } from "~/gamelib/utils/input";
 import FPSCounter from "./FPSCounter";
 import PauseScreen from "./PauseScreen";
 import { InitLighting } from "~/gamelib/eco/lighting";
-import { InitTerrain } from "~/gamelib/eco/terrrain";
+import { CleanupTerrain, InitTerrain } from "~/gamelib/eco/terrrain";
 
 const [rect, setRect] = createSignal({
   height: window.innerHeight,
@@ -125,24 +125,48 @@ export default function GameCanvas() {
         animate();
     });
 
-    onCleanup(()=> {
+    function cleanup() {
+        console.log("Cleaning up...");
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
         }
 
         player.deinit(scene);
-        //player.destroy();
+        player.destroy();
         
         boxes.forEach((box) => {
             box.deinit(scene);
-            //box.destroy(); 
+            box.destroy();
         });
 
         staticbox.deinit(scene);
-        //staticbox.destroy();
+        staticbox.destroy();
+
+        CleanupTerrain(scene);
 
         renderer.dispose();
-    });
+
+        // remove window listener
+        window.removeEventListener('resize', resizeHandler);
+
+        // exit pointer lock if needed
+        try { document.exitPointerLock(); } catch {}
+        console.log("Cleaned up!");
+    }
+
+    //copy pasted page close event handlers from chatgpt
+    //very "damn bitch you live like this" moment
+    // register unload handlers for full-page refresh / tab close
+        const cleanupOnUnload = (ev?: Event) => {
+            // try to perform same cleanup synchronously
+            try { cleanup(); } catch (e) { /* best-effort */ }
+        };
+        window.addEventListener('beforeunload', cleanupOnUnload, { capture: true });
+        window.addEventListener('pagehide', cleanupOnUnload, { capture: true });
+        // store so we can remove later
+        (window as any).__game_cleanup_unload = cleanupOnUnload;
+
+    onCleanup(cleanup);
 
     function onUnpause() {
         captureMouse()

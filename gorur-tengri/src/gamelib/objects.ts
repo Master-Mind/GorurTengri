@@ -43,7 +43,7 @@ export class PhysiBox {
     }
 
     destroy() {
-        jolt.destroy(this.physibox);
+        phys.GetBodyInterface().DestroyBody(this.physibox.GetID());
     }
 
 

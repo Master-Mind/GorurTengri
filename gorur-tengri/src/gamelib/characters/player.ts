@@ -38,8 +38,9 @@ export class Player {
     }
 
     update(dt : number) {
+        let gravity = this.freeCamMode ? 0 : -9;
         let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y));
-        this.character.SetLinearVelocity(new jolt.Vec3(rotmove.GetX() * this.moveSpeed, -9, rotmove.GetZ() * this.moveSpeed));
+        this.character.SetLinearVelocity(new jolt.Vec3(rotmove.GetX() * this.moveSpeed, gravity, rotmove.GetZ() * this.moveSpeed));
         this.character.ExtendedUpdate(dt,
              this.character.GetUp(), 
              this.updateSettings,
@@ -73,9 +74,10 @@ export class Player {
     curmove = new THREE.Vector2();
     curlook = new THREE.Vector2();
     turnSpeed = 3;
-    moveSpeed = 10;
+    moveSpeed = 100;
     //tried getting the rotation from the character but it didn't work
     //radians
     yaw = Math.PI;
     pitch = 0;
+    freeCamMode = true;
 }

@@ -20,16 +20,34 @@ export class InputManager {
         window.addEventListener('keyup', this.handleKeyUp.bind(this));
         window.addEventListener('keydown', this.handleKeyDown.bind(this));
         window.addEventListener('mousemove', this.handleMouseMove.bind(this));
+        
         window.addEventListener('gamepadconnected', this.onGamepadConnected.bind(this));
         window.addEventListener('gamepadconnected', this.onGamepadConnected.bind(this));
-        canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
-        canvas.addEventListener('touchmove', this.onTouchUpdate.bind(this));
-        canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
-        canvas.addEventListener('touchcancel', this.onTouchEnd.bind(this));
+
+        // extra vendor properties for older platforms
+        (canvas.style as any).webkitUserSelect = 'none';
+        (canvas.style as any).webkitTouchCallout = 'none';
+        (canvas.style as any).msTouchAction = 'none';
+
+        canvas.addEventListener('touchstart', this.onTouchStart.bind(this), { passive:false});
+        canvas.addEventListener('touchmove', this.onTouchUpdate.bind(this), { passive:false});
+        canvas.addEventListener('touchend', this.onTouchEnd.bind(this), { passive:false});
+        canvas.addEventListener('touchcancel', this.onTouchEnd.bind(this), { passive:false});
+        canvas.addEventListener('gesturestart', (e: Event) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('gesturechange', (e: Event) => {e.preventDefault()}, { passive:false});
+
+        canvas.addEventListener('touchstart', (e) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('touchmove', (e) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('touchend', (e) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('touchcancel', (e) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('gesturestart', (e) => {e.preventDefault()}, { passive:false});
+        canvas.addEventListener('gesturechange', (e) => {e.preventDefault()}, { passive:false});
+
         this.pickAController();
     }
 
     onTouchStart(event : TouchEvent) {
+        event.preventDefault();
         for(let i = 0; i < event.changedTouches.length; ++i) {
             let touch = event.changedTouches.item(i);
             console.log(`Touch started at {${touch?.pageX}, ${touch?.pageY}}`);
@@ -41,6 +59,7 @@ export class InputManager {
     }
 
     onTouchUpdate(event : TouchEvent) {
+        event.preventDefault();
         //console.log(`Touch updated on ${event.target}`);
         for(let i = 0; i < event.changedTouches.length; ++i) {
             let touch = event.changedTouches.item(i);
@@ -58,6 +77,7 @@ export class InputManager {
     }
 
     onTouchEnd(event : TouchEvent) {
+        event.preventDefault();
         //console.log(`Touch ended on ${event.target}`);
         for(let i = 0; i < event.changedTouches.length; ++i) {
             let touch = event.changedTouches.item(i);
@@ -123,17 +143,25 @@ export class InputManager {
         //console.log(movementAxis);
         let lookAxis = this.curMouseMove;
         const ratio = window.innerWidth / window.innerHeight;
+        const touchYawSensitivity = 1;
+        const touchPitchSensitivity = 0.5;
 
         //touch controls
         this.curTouches.forEach(touch => {
             //left side of screen, movement related
             if (touch.start.x < window.innerWidth / 2) {
-                movementAxis.set((touch.cur.x - touch.start.x) / (window.innerWidth * 0.1 * ratio), -(touch.cur.y - touch.start.y) / (window.innerWidth * 0.1 * ratio));
+                movementAxis.set(
+                    (touch.cur.x - touch.start.x) / (window.innerWidth * 0.1 * ratio), 
+                    -(touch.cur.y - touch.start.y) / (window.innerWidth * 0.1 * ratio)
+                );
                 //console.log(`moving becuase of touch {${touch.cur.x}, ${touch.cur.y}} - {${touch.start.x}, ${touch.start.y}} = {${movementAxis.x}, ${movementAxis.y}}`);
             }
             //right side of screen, look related
             else {
-                lookAxis.set((touch.cur.x - touch.start.x) / (window.innerWidth * ratio), (touch.cur.y - touch.start.y) / (window.innerWidth * ratio));
+                lookAxis.set(
+                    touchYawSensitivity * (touch.cur.x - touch.start.x) / (window.innerWidth * 0.3  * ratio), 
+                    touchPitchSensitivity * (touch.cur.y - touch.start.y) / (window.innerWidth * 0.3  * ratio)
+                );
                 //console.log(`moving becuase of touch {${touch.cur.x}, ${touch.cur.y}} - {${touch.start.x}, ${touch.start.y}} = {${movementAxis.x}, ${movementAxis.y}}`);
             }
         });
