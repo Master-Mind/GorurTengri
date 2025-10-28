@@ -6,7 +6,7 @@ import { joltworld, jolt } from "~/gamelib/physics-general";
 import { Player } from "~/gamelib/characters/player";
 import { randFloatSpread } from "three/src/math/MathUtils.js";
 import { InputManager } from "~/gamelib/utils/input";
-import FPSCounter from "./FPSCounter";
+import PerfStats from "./PerfStats";
 import PauseScreen from "./PauseScreen";
 import { InitLighting } from "~/gamelib/eco/lighting";
 import { CleanupTerrain, InitTerrain } from "~/gamelib/eco/terrrain";
@@ -180,6 +180,6 @@ export default function GameCanvas() {
          <Show when={paused()}>
             <PauseScreen onUnpause={onUnpause}/>
          </Show>
-         <FPSCounter fps={fps()}/>
+         <PerfStats fps={fps()}/>
     </div>
 }

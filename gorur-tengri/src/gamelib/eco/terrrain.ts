@@ -82,6 +82,7 @@ class terrainPatch {
 
         this.material.normalNode = transformNormalToView( vNormal );
         this.mesh = new THREE.Mesh(geo, this.material);
+        this.mesh.position.set(this.offset.x, this.offset.y, this.offset.z);
         scene.add(this.mesh);
 
         //console.log("Terrain generated");
@@ -237,6 +238,28 @@ export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene
     } catch(err : any) {
         console.log(`Terrain gen failed with error: ${err.message}`);
     }
+}
+
+export function CalcPatchSize() : number {
+    let ret = 0;
+
+    patches.forEach((patch) => {
+        let texwidth = patch.samplesPerMeter * patchWorldWidth;
+        ret += texwidth * texwidth * (4 + 4);
+    });
+
+    return ret;
+}
+
+export function CalcGeoSize() : number {
+    let ret = 0;
+
+    patchLODs.forEach((lod) => {
+        let buffwidth = lod.samplesPerMeter * patchWorldWidth;
+        ret += buffwidth * buffwidth * (16 + 6 * 4);
+    });
+
+    return ret;
 }
 
 export function CleanupTerrain(scene: THREE.Scene) {

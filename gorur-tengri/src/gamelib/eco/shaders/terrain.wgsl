@@ -8,7 +8,7 @@ fn vtx_main(position: vec4f,
     let texpos = (position.xz) * samplesPerMeter;
     let height = heightTex[u32(texpos.x) + u32(texpos.y * samplesPerMeter) * worldWidth];
 
-    var newPosition = position.xyz + offset;
+    var newPosition = position.xyz;
     newPosition.y += height * heightScale;
 
     let uvf = texpos;
