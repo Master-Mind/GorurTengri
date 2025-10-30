@@ -2,7 +2,7 @@ import Jolt from "jolt-physics";
 import { onMount, createSignal, createEffect, onCleanup, Show } from "solid-js";
 import * as THREE from "three/webgpu";
 import { PhysiBox } from "~/gamelib/objects";
-import { joltworld, jolt } from "~/gamelib/physics-general";
+import { joltworld, jolt, JoltRVecTo3Vec } from "~/gamelib/physics-general";
 import { Player } from "~/gamelib/characters/player";
 import { randFloatSpread } from "three/src/math/MathUtils.js";
 import { InputManager } from "~/gamelib/utils/input";
@@ -10,6 +10,9 @@ import PerfStats from "./PerfStats";
 import PauseScreen from "./PauseScreen";
 import { InitLighting } from "~/gamelib/eco/lighting";
 import { CleanupTerrain, InitTerrain } from "~/gamelib/eco/terrrain";
+import { InitCompute } from "~/gamelib/utils/computeHandler";
+import { redirect } from "@solidjs/router";
+import WebGPUBackend from "three/src/renderers/webgpu/WebGPUBackend.js";
 
 const [rect, setRect] = createSignal({
   height: window.innerHeight,
@@ -57,12 +60,18 @@ export default function GameCanvas() {
     let renderer : THREE.WebGPURenderer;
     let scene :THREE.Scene;
 
-    onMount(() => {
+    onMount(async () => {
         window.addEventListener('resize', resizeHandler);        
         console.log("mounted");
         scene = new THREE.Scene();
 
+        //TODO: Check for webgpu support and render an instruction component
         renderer = new THREE.WebGPURenderer({ canvas: canvasRef, antialias: true });
+        let computeRenderer = new THREE.WebGPURenderer({canvas:undefined})
+        await renderer.init();
+        console.log(computeRenderer);
+
+        //InitCompute();
         console.log("inited")
         renderer.setSize(rect().width, rect().height);
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -76,6 +85,7 @@ export default function GameCanvas() {
             document.exitPointerLock();
             setPaused(!paused());
         });
+
         player.init(inputman, new jolt.RVec3(0, 1, -10));
 
         createEffect(() => {
@@ -85,7 +95,8 @@ export default function GameCanvas() {
         });
 
         InitLighting(scene);
-        InitTerrain(renderer, scene);
+        InitTerrain(renderer, renderer, scene, JoltRVecTo3Vec(player.character.GetPosition()));
+        console.log("moving on from terrain")
 
         for (let index = 0; index < 10; index++) {
             //const box = new PhysiBox(false);
@@ -97,9 +108,10 @@ export default function GameCanvas() {
 
         let clock = new THREE.Clock();
         let fpsTimer = 0;
+        let fpsSamples = 0;
 
         async function animate() {
-        //console.log("rendering")
+            //console.log("rendering")
             let realDT = Math.min(clock.getDelta(),  1 / 30);
             let dt = paused() ? 0 : realDT;
             animationFrameId = requestAnimationFrame(animate);
@@ -114,12 +126,14 @@ export default function GameCanvas() {
             await renderer.renderAsync(scene, player.camera);
 
             fpsTimer += realDT;
+            fpsSamples++;
 
             if (fpsTimer >= 0.3)
             {
-                fpsTimer = 0;
                 // Update FPS counter
-                setFps(Math.round(1 / realDT));
+                setFps(Math.round(1 / (fpsTimer / fpsSamples)));
+                fpsTimer = 0;
+                fpsSamples = 0;
             }
         }
         animate();
@@ -155,7 +169,7 @@ export default function GameCanvas() {
     }
 
     //copy pasted page close event handlers from chatgpt
-    //very "damn bitch you live like this" moment
+    //very "damn bitch you live like this" moment regarding my view of webdevs
     // register unload handlers for full-page refresh / tab close
         const cleanupOnUnload = (ev?: Event) => {
             // try to perform same cleanup synchronously

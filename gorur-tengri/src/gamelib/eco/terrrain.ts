@@ -12,7 +12,7 @@ const heightFN = wgslFn(heightWGSL);
 const buffFN = wgslFn(genMeshWGSL);
 const computeFN = wgslFn(genWGSL, [heightFN]);
 
-const patchWorldWidth = 256;
+const patchWorldWidth = 256 * 4;
 const heightScale = 64;
 
 class terrainPatch {
@@ -45,11 +45,15 @@ class terrainPatch {
         this.material = null;
     }
 
-    async prepareHeightfield(renderer: THREE.WebGPURenderer) {
-        await renderer.computeAsync(this.comTex);
+    async prepareHeightfield(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer) {
+        await computeRenderer.computeAsync(this.comTex);
+        let buff = await renderer.getArrayBufferAsync(this.terrainTexture)
+        const floatArr = new Float32Array(buff);
+        
+        
     }
 
-    async instantiate(renderer: THREE.WebGPURenderer,
+    async instantiate(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer,
             scene: THREE.Scene,
             geo: THREE.BufferGeometry) {
         this.material = new THREE.MeshStandardNodeMaterial();
@@ -141,11 +145,11 @@ class terrainGeo {
         }).compute(vertCount);
     }
 
-    async instantiate(renderer: THREE.WebGPURenderer) {
-        await renderer.computeAsync(this.comMesh);
+    async instantiate(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer) {
+        await computeRenderer.computeAsync(this.comMesh);
         //console.log(`Three took ${(now() - comptim)} to generate the mesh`);
-        let vertarr = await renderer.getArrayBufferAsync(this.terrainBuffer);
-        let idxarr = await renderer.getArrayBufferAsync(this.terrainIndices);
+        let vertarr = await computeRenderer.getArrayBufferAsync(this.terrainBuffer);
+        let idxarr = await computeRenderer.getArrayBufferAsync(this.terrainIndices);
         let verts = new Float32Array(vertarr);
         let indices = new Uint32Array(idxarr);
 
@@ -196,43 +200,74 @@ class terrainGeo {
 let patchLODs: terrainGeo[] = [];
 let patches: terrainPatch[] = [];
 
-export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene) {
+function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vector3) : number {
+    const dist = epicenter.distanceToSquared(offset);
+    const dist1 = patchWorldWidth / 2;
+    const dist2 = patchWorldWidth;
+    const dist3 = patchWorldWidth * 2;
+    const dist4 = patchWorldWidth * 4;
+
+    return 0;
+
+    if (dist < dist1 * dist1) {
+        return 0;
+    }
+    if (dist < dist2 * dist2) {
+        return 1;
+    }
+    if (dist < dist3 * dist3) {
+        return 2;
+    }
+    if (dist < dist4 * dist4) {
+        return 3;
+    }
+}
+
+export function InitTerrain(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer, scene : THREE.Scene, epicenter : THREE.Vector3) {
     console.log("Generating terrain...");
     try {
         const terrainTim = now();
-        const samplesPerMeter = 2;
-        const bufferWidth = samplesPerMeter * patchWorldWidth;
-        const patchWidth = 2;
+        let samplesPerMeter = 2;
+        const patchWidth = 1;
+        const lodSamplesPerMeter = [2, 1, 1 / 4, 1 / 8, 1 / 16];
 
-        patchLODs.push(new terrainGeo(samplesPerMeter));
+        lodSamplesPerMeter.forEach((lod) => {
+            patchLODs.push(new terrainGeo(2));
+        });
 
         for (let x = 0; x < patchWidth; x++)
         {
             for (let y = 0; y < patchWidth; y++)
             {
                 const offset = new THREE.Vector3(x * (patchWorldWidth - 1), -50, y * (patchWorldWidth - 1));
-                patches.push(new terrainPatch(samplesPerMeter, offset));
+                patches.push(new terrainPatch(lodSamplesPerMeter[getLODLevelFromEpicenter(epicenter, offset)], offset));
             }
         }
 
         let lodPromises: Promise<void>[] = [];
         let texPromises: Promise<void>[] = [];
 
-        patchLODs.forEach((lod) => {
-            lodPromises.push(lod.instantiate(renderer));
-        });
-        patches.forEach((patch) => {
-            texPromises.push(patch.prepareHeightfield(renderer));
-        });
+        console.log(`Terrain Setup took ${now() - terrainTim}`);
 
+
+        patchLODs.forEach((lod) => {
+            lodPromises.push(lod.instantiate(renderer, computeRenderer));
+        });
+        console.log(`Terrain LOD Promise Setup took ${now() - terrainTim}`);
+        patches.forEach((patch) => {
+            texPromises.push(patch.prepareHeightfield(renderer, computeRenderer));
+        });
+        console.log(`Terrain Promise Setup took ${now() - terrainTim}`);
 
         Promise.all(lodPromises).then(() => {
+            console.log(`Terrain lod generation took ${now() - terrainTim}`);
             Promise.all(texPromises).then(() => {
+                console.log(`Terrain heightmap generation took ${now() - terrainTim}`);
                 patches.forEach((patch) => {
-                    patch.instantiate(renderer, scene, patchLODs[0].geo);
+                    patch.instantiate(renderer, computeRenderer, scene, patchLODs[getLODLevelFromEpicenter(epicenter, patch.offset)].geo);
                 });
 
-                console.log(`Terrain Generation took ${now() - terrainTim}`)
+                console.log(`Terrain Generation took ${now() - terrainTim}`);
             });
         });
     } catch(err : any) {

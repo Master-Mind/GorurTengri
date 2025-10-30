@@ -7,5 +7,10 @@ export default defineConfig({
             external: ["node:async_hooks"]
         }
     },
+    vite:{
+        server: {
+            allowedHosts: ["philtop.local"]
+        }
+    },
     ssr: false
 });

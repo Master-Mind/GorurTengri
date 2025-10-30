@@ -69,7 +69,7 @@ export class InputManager {
                 //console.log(`1 ${this.curTouches.get(touch.identifier)?.cur.x} ${this.curTouches.get(touch.identifier)?.start.x}`);
                 this.curTouches.get(touch.identifier)?.cur.set(touch.pageX, touch.pageY);
                 let temp = this.curTouches.get(touch.identifier);
-                console.log(`moving becuase of touch {${temp?.cur.x}, ${temp?.cur.y}} - {${temp?.start.x}, ${temp?.start.y}}`);
+                //console.log(`moving becuase of touch {${temp?.cur.x}, ${temp?.cur.y}} - {${temp?.start.x}, ${temp?.start.y}}`);
 
                 //console.log(`2 ${this.curTouches.get(touch.identifier)?.cur.x} ${this.curTouches.get(touch.identifier)?.start.x}`);
             }
@@ -143,25 +143,31 @@ export class InputManager {
         //console.log(movementAxis);
         let lookAxis = this.curMouseMove;
         const ratio = window.innerWidth / window.innerHeight;
-        const touchYawSensitivity = 1;
-        const touchPitchSensitivity = 0.5;
+        const touchYawSensitivity = 0.1;
+        const touchPitchSensitivity = 0.05;
 
         //touch controls
         this.curTouches.forEach(touch => {
             //left side of screen, movement related
             if (touch.start.x < window.innerWidth / 2) {
                 movementAxis.set(
-                    (touch.cur.x - touch.start.x) / (window.innerWidth * 0.1 * ratio), 
-                    -(touch.cur.y - touch.start.y) / (window.innerWidth * 0.1 * ratio)
+                    (touch.cur.x - touch.start.x) / (window.innerWidth * 0.5 * ratio), 
+                    -(touch.cur.y - touch.start.y) / (window.innerWidth * 0.5 * ratio)
                 );
                 //console.log(`moving becuase of touch {${touch.cur.x}, ${touch.cur.y}} - {${touch.start.x}, ${touch.start.y}} = {${movementAxis.x}, ${movementAxis.y}}`);
             }
             //right side of screen, look related
             else {
                 lookAxis.set(
-                    touchYawSensitivity * (touch.cur.x - touch.start.x) / (window.innerWidth * 0.3  * ratio), 
-                    touchPitchSensitivity * (touch.cur.y - touch.start.y) / (window.innerWidth * 0.3  * ratio)
+                    touchYawSensitivity * (touch.cur.x - touch.start.x) / (window.innerWidth * 0.5  * ratio), 
+                    touchPitchSensitivity * (touch.cur.y - touch.start.y) / (window.innerWidth * 0.5  * ratio)
                 );
+        
+        if (lookAxis.lengthSq() > 0.1)
+        {
+            console.log(lookAxis);
+
+        }
                 //console.log(`moving becuase of touch {${touch.cur.x}, ${touch.cur.y}} - {${touch.start.x}, ${touch.start.y}} = {${movementAxis.x}, ${movementAxis.y}}`);
             }
         });
@@ -215,7 +221,6 @@ export class InputManager {
         this.movementHandlers.forEach(handler => {
             handler(movementAxis);
         });
-        
         lookAxis.clampLength(0, 1);
         this.lookHandlers.forEach(handler => {
             handler(lookAxis);

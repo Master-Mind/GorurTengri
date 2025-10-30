@@ -10,7 +10,7 @@ export class Player {
         settings.mSupportingVolume = new jolt.Plane(jolt.Vec3.prototype.sAxisY(), -1);
         this.character = new jolt.CharacterVirtual(settings, HAMMER_SPACE, new jolt.Quat(), phys);
 
-        this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 10000);
         this.updateSettings = new jolt.ExtendedUpdateSettings();
     }
 
@@ -39,7 +39,7 @@ export class Player {
 
     update(dt : number) {
         let gravity = this.freeCamMode ? 0 : -9;
-        let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y));
+        let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, 1));
         this.character.SetLinearVelocity(new jolt.Vec3(rotmove.GetX() * this.moveSpeed, gravity, rotmove.GetZ() * this.moveSpeed));
         this.character.ExtendedUpdate(dt,
              this.character.GetUp(), 
