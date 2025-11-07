@@ -118,12 +118,13 @@ export class InputManager {
     }
 
     handleKeyDown(event : KeyboardEvent) {
-        //console.log(event);
-        this.curKeys.set(event.key, event);
+        this.curKeys.set(event.key.toLowerCase(), event);
+        //console.log(`key down ${event.key}`);
     }
 
     handleKeyUp(event : KeyboardEvent) {
-        this.curKeys.delete(event.key);
+        this.curKeys.delete(event.key.toLowerCase());
+        //console.log(`key up ${event.key}`);
     }
 
     subToMovement(handler : AxisHandler) {
@@ -136,6 +137,10 @@ export class InputManager {
 
     subToPause(handler : PressHandler) {
         this.pauseHandlers.push(handler);
+    }
+
+    subToSprint(handler : PressHandler) {
+        this.sprintHandlers.push(handler);
     }
 
     dispatch() {
@@ -196,8 +201,14 @@ export class InputManager {
             movementAxis.x += 1;
         }
 
-        if (this.curKeys.has('Escape') && !this.prevKeys.has('Escape')) {
+        if (this.curKeys.has('escape') && !this.prevKeys.has('escape')) {
             this.pauseHandlers.forEach((handler) => {
+                handler();
+            })
+        }
+
+        if (this.curKeys.has('shift')) {
+            this.sprintHandlers.forEach((handler) => {
                 handler();
             })
         }
@@ -238,5 +249,6 @@ export class InputManager {
     movementHandlers : AxisHandler[] = [];
     lookHandlers : AxisHandler[] = [];
     pauseHandlers : PressHandler[] = [];
+    sprintHandlers : PressHandler[] = [];
     curGamepadIDX = -1;
 }

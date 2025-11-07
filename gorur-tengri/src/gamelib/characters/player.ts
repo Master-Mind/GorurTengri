@@ -21,6 +21,7 @@ export class Player {
         this.camera.position.copy(JoltRVecTo3Vec(pos));
         inputMan.subToMovement(this.handleMovement.bind(this));
         inputMan.subToLook(this.handleLook.bind(this));
+        inputMan.subToSprint(this.handleSprint.bind(this))
     }
 
     updateView(width : number, height : number) {
@@ -32,15 +33,36 @@ export class Player {
         this.curmove = v;
     }
 
+    handleSprint() {
+        this.shouldSprint = true;
+    }
+
     handleLook(v : THREE.Vector2) {
         this.curlook.set(v.x, v.y);
        //console.log(this.curlook)
     }
 
     update(dt : number) {
-        let gravity = this.freeCamMode ? 0 : -9;
-        let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, 1));
-        this.character.SetLinearVelocity(new jolt.Vec3(rotmove.GetX() * this.moveSpeed, gravity, rotmove.GetZ() * this.moveSpeed));
+        let movement = new jolt.Vec3();
+        if (this.freeCamMode) {
+            let pitchq = jolt.Quat.prototype.sRotation(jolt.Vec3.prototype.sAxisX(), this.pitch);
+            let rotmove = pitchq.MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y))
+            rotmove = this.character.GetRotation().MulVec3(rotmove);
+            
+            movement = new jolt.Vec3(rotmove.GetX() * this.moveSpeed, rotmove.GetY() * this.moveSpeed, rotmove.GetZ() * this.moveSpeed);
+        }
+        else {
+            let gravity = -9;
+            let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y));
+            movement = new jolt.Vec3(rotmove.GetX() * this.moveSpeed, gravity, rotmove.GetZ() * this.moveSpeed);
+        }
+
+        if (this.shouldSprint) {
+            this.shouldSprint = false;
+            movement = movement.MulFloat(10);
+        }
+
+        this.character.SetLinearVelocity(movement);
         this.character.ExtendedUpdate(dt,
              this.character.GetUp(), 
              this.updateSettings,
@@ -80,4 +102,5 @@ export class Player {
     yaw = Math.PI;
     pitch = 0;
     freeCamMode = true;
+    shouldSprint = false;
 }

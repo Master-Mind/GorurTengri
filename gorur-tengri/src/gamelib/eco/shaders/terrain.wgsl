@@ -1,20 +1,30 @@
-fn vtx_main(position: vec4f, 
+fn vtx_main(
+    worldPosition: vec4f,
+    localPosition: vec4f,
     offset: vec3f,
-    normTex: texture_storage_2d<rgba8unorm, read>,
     samplesPerMeter: f32,
-    heightTex: ptr<storage, array<f32>, read>,
+    heightTex: texture_2d<f32>,
+    heightSampler: sampler,
     worldWidth: u32,
+    texWorldWidth: f32,
     heightScale: f32) -> vec4f {
-    let texpos = (position.xz) * samplesPerMeter;
-    let height = heightTex[u32(texpos.x) + u32(texpos.y * samplesPerMeter) * worldWidth];
+    var tempPosition = worldPosition.xyz;
+    var neighborA = tempPosition + vec3f(0.01, 0, 0);
+    var neighborB = tempPosition + vec3f(0, 0, 0.01);
 
-    var newPosition = position.xyz;
-    newPosition.y += height * heightScale;
+    let uv = vec2f(tempPosition.xz) / texWorldWidth;
+    let uvA = vec2f(neighborA.xz) / texWorldWidth;
+    let uvB = vec2f(neighborB.xz) / texWorldWidth;
 
-    let uvf = texpos;
-    varyings.vNormal = textureLoad(normTex, vec2u(u32(uvf.x), u32(uvf.y))).xyz;
+    tempPosition.y += (textureSampleLevel(heightTex, heightSampler, uv, 0).r * heightScale);
+    neighborA.y += textureSampleLevel(heightTex, heightSampler, uvA, 0).r * heightScale;
+    neighborB.y += textureSampleLevel(heightTex, heightSampler, uvB, 0).r * heightScale;
 
-    return vec4f(newPosition, 1.);
+    let toA = normalize(neighborA - tempPosition);
+    let toB = normalize(neighborB - tempPosition);
+    varyings.vNormal = -cross(toA, toB);
+
+    return vec4f(localPosition.x, tempPosition.y, localPosition.z, 1.);
 }
 //NOTE: Threejs always tries to call the first whatever the fuck thingamawhatsit in a wgsl module ._.
 //even if that whatever the fuck thingamawhatsit is a comment ._.

@@ -10,6 +10,10 @@ export default defineConfig({
     vite:{
         server: {
             allowedHosts: ["philtop.local"]
+        },
+        build: {
+            sourcemap: true,
+            minify: false
         }
     },
     ssr: false

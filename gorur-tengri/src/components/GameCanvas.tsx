@@ -9,10 +9,11 @@ import { InputManager } from "~/gamelib/utils/input";
 import PerfStats from "./PerfStats";
 import PauseScreen from "./PauseScreen";
 import { InitLighting } from "~/gamelib/eco/lighting";
-import { CleanupTerrain, InitTerrain } from "~/gamelib/eco/terrrain";
+import { CleanupTerrain, InitTerrain, TerrainUpdate } from "~/gamelib/eco/terrrain";
 import { InitCompute } from "~/gamelib/utils/computeHandler";
 import { redirect } from "@solidjs/router";
 import WebGPUBackend from "three/src/renderers/webgpu/WebGPUBackend.js";
+import { now } from "three/examples/jsm/libs/tween.module.js";
 
 const [rect, setRect] = createSignal({
   height: window.innerHeight,
@@ -86,7 +87,7 @@ export default function GameCanvas() {
             setPaused(!paused());
         });
 
-        player.init(inputman, new jolt.RVec3(0, 1, -10));
+        player.init(inputman, new jolt.RVec3(0, 100, -10));
 
         createEffect(() => {
             renderer.setSize(rect().width, rect().height);
@@ -95,7 +96,7 @@ export default function GameCanvas() {
         });
 
         InitLighting(scene);
-        InitTerrain(renderer, renderer, scene, JoltRVecTo3Vec(player.character.GetPosition()));
+        InitTerrain(renderer, scene, JoltRVecTo3Vec(player.character.GetPosition()));
         console.log("moving on from terrain")
 
         for (let index = 0; index < 10; index++) {
@@ -104,26 +105,65 @@ export default function GameCanvas() {
             //box.init(scene, new jolt.RVec3(randFloatSpread(5), randFloatSpread(5) + 5, randFloatSpread(5)));
         }
 
+        let temp = new THREE.Object3D();
+        let temp2 = new THREE.Mesh(new THREE.BoxGeometry())
+        scene.add(temp);
+        scene.add(temp2);
         staticbox.init(scene, new jolt.RVec3(0, -4, -10), new jolt.Vec3(1, 1, 1));
+
+        temp.add(staticbox.visibox)
 
         let clock = new THREE.Clock();
         let fpsTimer = 0;
         let fpsSamples = 0;
+        let logtims = false;
 
         async function animate() {
-            //console.log("rendering")
+            let startTim = now();
+            if (logtims) {
+                console.log("rendering start");
+            }
             let realDT = Math.min(clock.getDelta(),  1 / 30);
             let dt = paused() ? 0 : realDT;
+            temp.position.x += realDT / 10;
             animationFrameId = requestAnimationFrame(animate);
+            TerrainUpdate();
             joltworld.Step(dt, 1);
 
+            
+            if (logtims) {
+                console.log(`Jolt step and setup took ${now() - startTim}`);
+                startTim = now();
+            }
+
             inputman.dispatch();
+            
+            if (logtims) {
+                console.log(`Input took ${now() - startTim}`);
+                startTim = now();
+            }
 
             for (let index = 0; index < boxes.length; index++) {
                 boxes[index].update();
             }
+
+            if (logtims) {
+                console.log(`box update took ${now() - startTim}`);
+                startTim = now();
+            }
+
             player.update(dt);
+
+            if (logtims) {
+                console.log(`player update took ${now() - startTim}`);
+                startTim = now();
+            }
             await renderer.renderAsync(scene, player.camera);
+
+            if (logtims) {
+                console.log(`render took ${now() - startTim}`);
+                startTim = now();
+            }
 
             fpsTimer += realDT;
             fpsSamples++;
@@ -134,6 +174,11 @@ export default function GameCanvas() {
                 setFps(Math.round(1 / (fpsTimer / fpsSamples)));
                 fpsTimer = 0;
                 fpsSamples = 0;
+                logtims = false;
+            }
+
+            if (logtims) {
+                console.log(`fps update took ${now() - startTim}`);
             }
         }
         animate();
@@ -194,6 +239,6 @@ export default function GameCanvas() {
          <Show when={paused()}>
             <PauseScreen onUnpause={onUnpause}/>
          </Show>
-         <PerfStats fps={fps()}/>
+         <PerfStats fps={fps()} renderer={renderer}/>
     </div>
 }

@@ -1,5 +1,5 @@
 import { mx_perlin_noise_float } from "three/src/nodes/materialx/lib/mx_noise.js";
-import { attribute, transformNormalToView, vec3, varying,  wgslFn, storageTexture, instanceIndex, vec2, uint, storage, attributeArray } from "three/tsl";
+import { attribute, transformNormalToView, vec3, varying,  wgslFn, storageTexture, instanceIndex, vec2, uint, storage, attributeArray, texture, positionGeometry, positionLocal, positionWorld } from "three/tsl";
 import * as THREE from "three/webgpu";
 import terrainWGSL from "./shaders/terrain.wgsl?raw";
 import terrainFragWGSL from "./shaders/terrainFrag.wgsl?raw";
@@ -8,55 +8,29 @@ import genMeshWGSL from "./shaders/genTerrainMesh.wgsl?raw";
 import heightWGSL from "./shaders/heightFunction.wgsl?raw";
 import { jolt } from "../physics-general";
 import { now } from "three/examples/jsm/libs/tween.module.js";
+import { HDRLoader, RGBELoader, UltraHDRLoader } from "three/examples/jsm/Addons.js";
 const heightFN = wgslFn(heightWGSL);
 const buffFN = wgslFn(genMeshWGSL);
 const computeFN = wgslFn(genWGSL, [heightFN]);
 
-const patchWorldWidth = 256 * 4;
-const heightScale = 64;
+const patchWorldWidth = 256 * 2;
+const heightScale = 5000;
+const lodSamplesPerMeter = [2, 1, 1 / 4, 1 / 8, 1 / 8];
+const texilsPerMeter = 1;
+let terrainParent = new THREE.Object3D();
 
 class terrainPatch {
     constructor(samplesPerMeter: number, 
         offset: THREE.Vector3){
-        const bufferWidth = patchWorldWidth * samplesPerMeter;
-        this.offset = offset;
-        this.terrainTexture = new THREE.StorageBufferAttribute(bufferWidth * bufferWidth, 1);
-        this.terrainTexture.name = 'terrainPatchTex';
-        this.normalTexture = new THREE.StorageTexture(bufferWidth, bufferWidth);
-        this.normalTexture.name = 'terrainPatchNormals';
-        this.normalTexture.generateMipmaps = false;
-        this.terrainTexBuf = storage(this.terrainTexture, 'float', bufferWidth * bufferWidth);
-        this.writeNorm= storageTexture(this.normalTexture);
-        this.readNorm = storageTexture(this.normalTexture);
-        this.readNorm.setAccess(THREE.NodeAccess.READ_ONLY);
-        this.samplesPerMeter = samplesPerMeter;
-
-        this.comTex = computeFN({
-            writeTex: this.terrainTexBuf,
-            normTex: this.writeNorm,
-            index: instanceIndex,
-            offset: offset,
-            worldWidth: patchWorldWidth,
-            samplesPerMeter: samplesPerMeter,
-            heightScale: heightScale
-        }).compute(bufferWidth*bufferWidth);
-
-        this.mesh = null;
-        this.material = null;
+            this.offset = offset;
+            this.samplesPerMeter = samplesPerMeter;
     }
 
-    async prepareHeightfield(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer) {
-        await computeRenderer.computeAsync(this.comTex);
-        let buff = await renderer.getArrayBufferAsync(this.terrainTexture)
-        const floatArr = new Float32Array(buff);
-        
-        
-    }
-
-    async instantiate(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer,
-            scene: THREE.Scene,
-            geo: THREE.BufferGeometry) {
-        this.material = new THREE.MeshStandardNodeMaterial();
+    instantiate(scene : THREE.Scene,
+        tex: terrainTex,
+        geo: THREE.BufferGeometry
+    ) {
+        this.material = new THREE.MeshPhysicalNodeMaterial();
         const vNormal = varying(vec3(), 'vNormal');
         //console.log(`Three took ${(now() - comptim)} to generate the heightmap`);
             
@@ -67,14 +41,27 @@ class terrainPatch {
 
         const vtxMain = wgslFn(terrainWGSL,[vNormal, heightFN]);
 
+        //console.log(`vert{
+        //    position: attribute( 'position' ),
+        //    offset: ${this.offset},
+        //    samplesPerMeter: ${this.samplesPerMeter},
+        //    heightTex: ${tex.node},
+        //    heightSampler: ${tex.node},
+        //    worldWidth: ${patchWorldWidth},
+        //    texWorldWidth: ${tex.worldWidth},
+        //    heightScale: ${heightScale}
+        //    }`)
+
         // use the returned vec3 as the vertex position offset in the node graph
         this.material.positionNode = vtxMain({
-            position: attribute( 'position' ),
+            worldPosition: positionWorld,
+            localPosition: positionLocal,
             offset: this.offset,
-            normTex: this.readNorm,
             samplesPerMeter: this.samplesPerMeter,
-            heightTex: this.terrainTexBuf,
+            heightTex: tex.node,
+            heightSampler: tex.node,
             worldWidth: patchWorldWidth,
+            texWorldWidth: tex.worldWidth,
             heightScale: heightScale
         });
 
@@ -86,37 +73,37 @@ class terrainPatch {
 
         this.material.normalNode = transformNormalToView( vNormal );
         this.mesh = new THREE.Mesh(geo, this.material);
+        terrainParent.add(this.mesh)
         this.mesh.position.set(this.offset.x, this.offset.y, this.offset.z);
-        scene.add(this.mesh);
-
-        //console.log("Terrain generated");
     }
 
-    dispose(scene: THREE.Scene) {
-        if (this.mesh)
-        {
-            scene.remove(this.mesh);
-            this.material?.dispose();
+    dispose() {
+        if (this.material) {
+            this.material.dispose();
         }
-        this.comTex.dispose();
-        this.terrainTexBuf.dispose();
-        this.writeNorm.dispose();
-        this.readNorm.dispose();
-
-        this.normalTexture.dispose();
     }
 
-    mesh: THREE.Mesh<THREE.BufferGeometry<THREE.NormalBufferAttributes, THREE.BufferGeometryEventMap>, THREE.MeshStandardNodeMaterial, THREE.Object3DEventMap> | null;
-    material: THREE.MeshStandardNodeMaterial | null;
-
-    samplesPerMeter: number;
-    comTex: THREE.TSL.ShaderNodeObject<THREE.ComputeNode>;
+    material: THREE.MeshPhysicalNodeMaterial | null = null;
+    mesh: THREE.Mesh | null = null;
     offset: THREE.Vector3;
-    terrainTexture: THREE.StorageBufferAttribute;
-    normalTexture: THREE.StorageTexture;
-    terrainTexBuf: THREE.TSL.ShaderNodeObject<THREE.StorageBufferNode>;
-    writeNorm: THREE.TSL.ShaderNodeObject<THREE.StorageTextureNode>;
-    readNorm: THREE.TSL.ShaderNodeObject<THREE.StorageTextureNode>;
+    samplesPerMeter: number;
+}
+
+class terrainTex {
+    constructor(tex: THREE.Texture, offset: THREE.Vector3, worldWidth: number) {
+        this.tex = tex;
+        this.offset = offset;
+        this.worldWidth = worldWidth;
+        this.node = texture(this.tex);
+    }
+
+    dispose() {
+        this.tex.dispose();
+    }
+    tex: THREE.Texture;
+    node: THREE.TSL.ShaderNodeObject<THREE.TextureNode>;
+    offset: THREE.Vector3;
+    worldWidth: number;
 }
 
 class terrainGeo {
@@ -145,11 +132,11 @@ class terrainGeo {
         }).compute(vertCount);
     }
 
-    async instantiate(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer) {
-        await computeRenderer.computeAsync(this.comMesh);
+    async instantiate(renderer : THREE.WebGPURenderer) {
+        await renderer.computeAsync(this.comMesh);
         //console.log(`Three took ${(now() - comptim)} to generate the mesh`);
-        let vertarr = await computeRenderer.getArrayBufferAsync(this.terrainBuffer);
-        let idxarr = await computeRenderer.getArrayBufferAsync(this.terrainIndices);
+        let vertarr = await renderer.getArrayBufferAsync(this.terrainBuffer);
+        let idxarr = await renderer.getArrayBufferAsync(this.terrainIndices);
         let verts = new Float32Array(vertarr);
         let indices = new Uint32Array(idxarr);
 
@@ -176,6 +163,8 @@ class terrainGeo {
         //console.log(buffAttr)
         this.geo.setAttribute('position', buffAttr);
         this.geo.setIndex(new THREE.BufferAttribute(indices, 1));
+        this.geo.boundingBox = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3(patchWorldWidth, heightScale, patchWorldWidth));
+        this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(patchWorldWidth / 2, 0, patchWorldWidth / 2), heightScale)
         //console.log(`Three took ${(now() - geotim)} to retrieve the mesh`);
     }
 
@@ -199,6 +188,7 @@ class terrainGeo {
 
 let patchLODs: terrainGeo[] = [];
 let patches: terrainPatch[] = [];
+let texes: terrainTex[] = [];
 
 function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vector3) : number {
     const dist = epicenter.distanceToSquared(offset);
@@ -206,8 +196,6 @@ function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vect
     const dist2 = patchWorldWidth;
     const dist3 = patchWorldWidth * 2;
     const dist4 = patchWorldWidth * 4;
-
-    return 0;
 
     if (dist < dist1 * dist1) {
         return 0;
@@ -221,53 +209,68 @@ function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vect
     if (dist < dist4 * dist4) {
         return 3;
     }
+
+    return 4;
 }
 
-export function InitTerrain(renderer : THREE.WebGPURenderer, computeRenderer: THREE.WebGPURenderer, scene : THREE.Scene, epicenter : THREE.Vector3) {
+export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene, epicenter : THREE.Vector3) {
     console.log("Generating terrain...");
     try {
         const terrainTim = now();
-        let samplesPerMeter = 2;
-        const patchWidth = 1;
-        const lodSamplesPerMeter = [2, 1, 1 / 4, 1 / 8, 1 / 16];
+        scene.add(terrainParent);
 
         lodSamplesPerMeter.forEach((lod) => {
-            patchLODs.push(new terrainGeo(2));
+            patchLODs.push(new terrainGeo(lod));
         });
 
-        for (let x = 0; x < patchWidth; x++)
-        {
-            for (let y = 0; y < patchWidth; y++)
-            {
-                const offset = new THREE.Vector3(x * (patchWorldWidth - 1), -50, y * (patchWorldWidth - 1));
-                patches.push(new terrainPatch(lodSamplesPerMeter[getLODLevelFromEpicenter(epicenter, offset)], offset));
-            }
-        }
-
         let lodPromises: Promise<void>[] = [];
-        let texPromises: Promise<void>[] = [];
+        let texPromises: Promise<THREE.Texture>[] = [];
 
         console.log(`Terrain Setup took ${now() - terrainTim}`);
 
 
         patchLODs.forEach((lod) => {
-            lodPromises.push(lod.instantiate(renderer, computeRenderer));
+            lodPromises.push(lod.instantiate(renderer));
         });
         console.log(`Terrain LOD Promise Setup took ${now() - terrainTim}`);
-        patches.forEach((patch) => {
-            texPromises.push(patch.prepareHeightfield(renderer, computeRenderer));
-        });
+        
         console.log(`Terrain Promise Setup took ${now() - terrainTim}`);
+
+        const loader = new HDRLoader();
+        loader.setDataType(THREE.HalfFloatType);
+
+        texPromises.push(loader.loadAsync("src/data/large/textures/output.hdr"));
 
         Promise.all(lodPromises).then(() => {
             console.log(`Terrain lod generation took ${now() - terrainTim}`);
-            Promise.all(texPromises).then(() => {
-                console.log(`Terrain heightmap generation took ${now() - terrainTim}`);
-                patches.forEach((patch) => {
-                    patch.instantiate(renderer, computeRenderer, scene, patchLODs[getLODLevelFromEpicenter(epicenter, patch.offset)].geo);
+            
+            Promise.all(texPromises).then((textures) => {
+                console.log(`Terrain texture loading took ${now() - terrainTim}`);
+                console.log(`Loaded texture with depth ${textures[0].depth}, type ${textures[0].type}, and format ${textures[0].format}`)
+                texes.push(new terrainTex(textures[0], 
+                    new THREE.Vector3(),
+                textures[0].width / texilsPerMeter));
+
+                texes.forEach((tex) => {
+                    let patchWidth = (tex.tex.width / texilsPerMeter) / patchWorldWidth;
+                    console.log(patchWidth);
+
+                    for(let x = 0; x < patchWidth; ++x)
+                    {
+                        for(let y = 0; y < patchWidth; ++y)
+                        {
+                            let temp = tex.offset.clone();
+                            let offset = temp.add(new THREE.Vector3(x * patchWorldWidth, -100, y * patchWorldWidth));
+                            let lod = getLODLevelFromEpicenter(epicenter, offset);
+                            let patch = new terrainPatch(lodSamplesPerMeter[lod], offset);
+
+                            patches.push(patch);
+                            patch.instantiate(scene, tex, patchLODs[lod].geo);
+                        }
+                    }
                 });
 
-                console.log(`Terrain Generation took ${now() - terrainTim}`);
+                console.log(`Patch instantiation took ${now() - terrainTim}`);
             });
         });
     } catch(err : any) {
@@ -275,32 +278,122 @@ export function InitTerrain(renderer : THREE.WebGPURenderer, computeRenderer: TH
     }
 }
 
-export function CalcPatchSize() : number {
-    let ret = 0;
+let temp = 0;
 
-    patches.forEach((patch) => {
-        let texwidth = patch.samplesPerMeter * patchWorldWidth;
-        ret += texwidth * texwidth * (4 + 4);
+export function TerrainUpdate() {
+    //temp += 0.01;
+    terrainParent.position.x = Math.floor(temp);
+    //console.log(terrainParent.position)
+}
+
+//thanks gpt for making better memory calc functions
+export function CalcHeightfieldSize() : number {
+    let bytes = 0;
+
+    texes.forEach((t) => {
+        const tex = t.tex;
+        // get width/height from image if available (HDR loaders often put .image)
+        const img = (tex as any).image ?? {};
+        const width = img.width ?? (tex as any).width ?? 0;
+        const height = img.height ?? (tex as any).height ?? 0;
+        if (!width || !height) return;
+
+        // components inferred from format
+        let components = 4; // default RGBA
+        switch (tex.format) {
+            case (THREE.RedFormat as any): components = 1; break;
+            case (THREE.RGBFormat as any): components = 3; break;
+            case (THREE.RGBAFormat as any): components = 4; break;
+            // add other formats you use as needed
+            default: components = 4; break;
+        }
+
+        // bytes per channel inferred from type
+        let bytesPerChannel = 4;
+        switch (tex.type) {
+            case THREE.UnsignedByteType: bytesPerChannel = 1; break;
+            case (THREE.HalfFloatType as any): bytesPerChannel = 2; break;
+            case THREE.FloatType: bytesPerChannel = 4; break;
+            default: bytesPerChannel = 4; break;
+        }
+
+        let base = width * height * components * bytesPerChannel;
+
+        // account for mipmaps if generated (approximate sum of mip levels = 4/3 * base)
+        if (tex.generateMipmaps) {
+            base = Math.round(base * 4 / 3);
+        }
+
+        // compressed formats would need special handling (not covered here)
+        bytes += base;
     });
 
-    return ret;
+    return bytes;
 }
 
 export function CalcGeoSize() : number {
-    let ret = 0;
+    let bytes = 0;
 
     patchLODs.forEach((lod) => {
-        let buffwidth = lod.samplesPerMeter * patchWorldWidth;
-        ret += buffwidth * buffwidth * (16 + 6 * 4);
+        // deduce vertex count from the geometry or fallback to expected formula
+        const bufferWidth = Math.round(lod.samplesPerMeter * patchWorldWidth);
+        const vertCount = bufferWidth * bufferWidth;
+
+        // geometry attributes (CPU-side typed arrays or GPU attributes)
+        const geo = lod.geo;
+        let vertexBytes = 0;
+        const pos = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
+        if (pos && pos.array) {
+            const elSize = (pos.array as any).BYTES_PER_ELEMENT ?? 4;
+            vertexBytes = pos.count * pos.itemSize * elSize;
+        } else {
+            // fallback: assume vec4 position (4 floats)
+            vertexBytes = vertCount * 4 * 4;
+        }
+
+        // index buffer
+        let indexBytes = 0;
+        if (geo.index && geo.index.array) {
+            indexBytes = (geo.index.array as any).length * ((geo.index.array as any).BYTES_PER_ELEMENT ?? 4);
+        } else {
+            // fallback based on code that creates idxCount = vertCount * 6 with 32-bit ints
+            indexBytes = vertCount * 6 * 4;
+        }
+
+        // include storage / compute buffers used by the generator if present
+        // terrainBuffer was created as StorageBufferAttribute(vertCount, 4) -> vec4 float32 per vertex
+        if (lod.terrainBuffer) {
+            // storage buffer node references float32 vec4 elements
+            try {
+                const storageElements = (lod.terrainBuffer as any).count ?? vertCount;
+                vertexBytes += storageElements * 4 * 4; // vec4 float32
+            } catch { /* best-effort */ }
+        }
+        if (lod.terrainIndices) {
+            try {
+                // terrainIndices length is idxCount
+                const idxCount = (lod.terrainIndices as any).array?.length ?? (vertCount * 6);
+                indexBytes += idxCount * 4;
+            } catch { }
+        }
+
+        // add an approximation of three.js BufferAttribute wrappers (CPU-side)
+        const cpuCopyOverhead = vertexBytes * 1 + indexBytes * 1; // you can tweak (1x means we count cpu copies once)
+
+        bytes += vertexBytes + indexBytes + cpuCopyOverhead;
     });
 
-    return ret;
+    return bytes;
 }
 
 export function CleanupTerrain(scene: THREE.Scene) {
     patches.forEach((patch) => {
-        patch.dispose(scene);
+        //patch.dispose(scene);
     });
+
+    texes.forEach((tex) => {
+        tex.dispose();
+    })
 
     patchLODs.forEach((lod) => {
         lod.dispose();

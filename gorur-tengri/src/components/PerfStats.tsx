@@ -1,6 +1,8 @@
 import { createSignal, JSX, onCleanup, onMount } from "solid-js";
-import { CalcGeoSize, CalcPatchSize } from "~/gamelib/eco/terrrain";
+import { CalcGeoSize, CalcHeightfieldSize } from "~/gamelib/eco/terrrain";
 import { jolt } from "~/gamelib/physics-general";
+import * as THREE from "three/webgpu";
+import { render } from "solid-js/web";
 
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -13,10 +15,11 @@ function formatBytes(bytes: number, decimals = 2): string {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export default function PerfStats(props: { fps: number }) {
+export default function PerfStats(props: { fps: number, renderer: THREE.WebGPURenderer | null }) {
     const [joltHeapSize, setJoltHeapSize] = createSignal<number>(jolt.HEAPU8.length);
     const [patchHeapSize, setPatchHeapSize] = createSignal<number>(0);
     const [geoHeapSize, setGeoHeapSize] = createSignal<number>(0);
+    
     onMount(() => {
         console.log(`Initial Jolt heap ${formatBytes(jolt.HEAPU8.length)}`);
 
@@ -26,7 +29,7 @@ export default function PerfStats(props: { fps: number }) {
                 setJoltHeapSize(jolt.HEAPU8.length);
             }
 
-            let calc = CalcPatchSize();
+            let calc = CalcHeightfieldSize();
 
             if (calc !== patchHeapSize()) {
                 setPatchHeapSize(calc);
