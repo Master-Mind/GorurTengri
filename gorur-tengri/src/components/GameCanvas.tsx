@@ -21,6 +21,7 @@ const [rect, setRect] = createSignal({
 });
 
 const [paused, setPaused] = createSignal(false);
+const [playerPos, setPlayerPos] = createSignal(new THREE.Vector3);
 
 const resizeHandler = (event : Event) => {
   setRect({ height: window.innerHeight, width: window.innerWidth });
@@ -87,7 +88,7 @@ export default function GameCanvas() {
             setPaused(!paused());
         });
 
-        player.init(inputman, new jolt.RVec3(0, 100, -10));
+        player.init(inputman, new jolt.RVec3(0, 700, -10));
 
         createEffect(() => {
             renderer.setSize(rect().width, rect().height);
@@ -127,7 +128,7 @@ export default function GameCanvas() {
             let dt = paused() ? 0 : realDT;
             temp.position.x += realDT / 10;
             animationFrameId = requestAnimationFrame(animate);
-            TerrainUpdate();
+            TerrainUpdate(player.camera.position, player.yaw, 100);
             joltworld.Step(dt, 1);
 
             
@@ -175,6 +176,7 @@ export default function GameCanvas() {
                 fpsTimer = 0;
                 fpsSamples = 0;
                 logtims = false;
+                setPlayerPos(player.camera.position.clone());
             }
 
             if (logtims) {
@@ -239,6 +241,6 @@ export default function GameCanvas() {
          <Show when={paused()}>
             <PauseScreen onUnpause={onUnpause}/>
          </Show>
-         <PerfStats fps={fps()} renderer={renderer}/>
+         <PerfStats fps={fps()} renderer={renderer} playerPos={playerPos()}/>
     </div>
 }

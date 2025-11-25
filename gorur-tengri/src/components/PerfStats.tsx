@@ -1,5 +1,5 @@
 import { createSignal, JSX, onCleanup, onMount } from "solid-js";
-import { CalcGeoSize, CalcHeightfieldSize } from "~/gamelib/eco/terrrain";
+import { CalcGeoSize, CalcHeightfieldSize, CalcTris } from "~/gamelib/eco/terrrain";
 import { jolt } from "~/gamelib/physics-general";
 import * as THREE from "three/webgpu";
 import { render } from "solid-js/web";
@@ -15,10 +15,11 @@ function formatBytes(bytes: number, decimals = 2): string {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export default function PerfStats(props: { fps: number, renderer: THREE.WebGPURenderer | null }) {
+export default function PerfStats(props: { fps: number, renderer: THREE.WebGPURenderer | null, playerPos: THREE.Vector3 }) {
     const [joltHeapSize, setJoltHeapSize] = createSignal<number>(jolt.HEAPU8.length);
     const [patchHeapSize, setPatchHeapSize] = createSignal<number>(0);
     const [geoHeapSize, setGeoHeapSize] = createSignal<number>(0);
+    const [numTris, setNumTris] = createSignal<number>(0);
     
     onMount(() => {
         console.log(`Initial Jolt heap ${formatBytes(jolt.HEAPU8.length)}`);
@@ -39,6 +40,12 @@ export default function PerfStats(props: { fps: number, renderer: THREE.WebGPURe
 
             if (geosize !== geoHeapSize()) {
                 setGeoHeapSize(geosize);
+            }
+
+            let tris = CalcTris();
+
+            if (numTris() !== tris) {
+                setNumTris(tris);
             }
         }, pollInterval);
 
@@ -63,5 +70,7 @@ export default function PerfStats(props: { fps: number, renderer: THREE.WebGPURe
              <div>Preallocated Jolt Heap size: {formatBytes(joltHeapSize())}</div>
              <div>Total size of heightmaps: {formatBytes(patchHeapSize())}</div>
              <div>Total size of terrain geometry: {formatBytes(geoHeapSize())}</div>
+             <div>Triangles being rendered: {numTris().toLocaleString()}</div>
+             <div>Player Position: {`{${props.playerPos.x}, ${props.playerPos.y}, ${props.playerPos.z}}`}</div>
          </div>;
 }

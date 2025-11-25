@@ -10,7 +10,7 @@ export class Player {
         settings.mSupportingVolume = new jolt.Plane(jolt.Vec3.prototype.sAxisY(), -1);
         this.character = new jolt.CharacterVirtual(settings, HAMMER_SPACE, new jolt.Quat(), phys);
 
-        this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 10000);
+        this.camera = new THREE.PerspectiveCamera(90, width / height, 0.1, 10000);
         this.updateSettings = new jolt.ExtendedUpdateSettings();
     }
 
@@ -72,7 +72,11 @@ export class Player {
              charShapeFilter, 
              joltworld.GetTempAllocator());
         
-        this.yaw -= this.curlook.x * dt * this.turnSpeed;
+        this.yaw = (this.yaw - this.curlook.x * dt * this.turnSpeed) % (Math.PI * 2);
+        if (this.yaw < 0)
+        {
+            this.yaw = (Math.PI * 2) + this.yaw;
+        }
         let newpitch = this.pitch - this.curlook.y * dt * this.turnSpeed;
         this.pitch = Math.min(Math.max(newpitch, -Math.PI / 2), Math.PI / 2);
         this.character.SetRotation(jolt.Quat.prototype.sRotation(jolt.Vec3.prototype.sAxisY(), this.yaw));

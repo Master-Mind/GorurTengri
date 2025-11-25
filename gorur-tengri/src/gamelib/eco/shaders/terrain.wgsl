@@ -1,20 +1,22 @@
 fn vtx_main(
     worldPosition: vec4f,
     localPosition: vec4f,
-    offset: vec3f,
     samplesPerMeter: f32,
     heightTex: texture_2d<f32>,
     heightSampler: sampler,
     worldWidth: u32,
     texWorldWidth: f32,
-    heightScale: f32) -> vec4f {
-    var tempPosition = worldPosition.xyz;
-    var neighborA = tempPosition + vec3f(0.01, 0, 0);
-    var neighborB = tempPosition + vec3f(0, 0, 0.01);
+    texOffset: vec2f,
+    heightScale: f32,
+    instance: mat4x4f,
+    model: mat4x4f) -> vec4f {
+    var tempPosition = (model * instance * localPosition).xyz;
+    var neighborA = tempPosition + vec3f(1, 0, 0);
+    var neighborB = tempPosition + vec3f(0, 0, 1);
 
-    let uv = vec2f(tempPosition.xz) / texWorldWidth;
-    let uvA = vec2f(neighborA.xz) / texWorldWidth;
-    let uvB = vec2f(neighborB.xz) / texWorldWidth;
+    let uv = vec2f(tempPosition.xz + texOffset) / texWorldWidth;
+    let uvA = vec2f(neighborA.xz + texOffset) / texWorldWidth;
+    let uvB = vec2f(neighborB.xz + texOffset) / texWorldWidth;
 
     tempPosition.y += (textureSampleLevel(heightTex, heightSampler, uv, 0).r * heightScale);
     neighborA.y += textureSampleLevel(heightTex, heightSampler, uvA, 0).r * heightScale;
