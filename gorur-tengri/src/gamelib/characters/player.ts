@@ -49,13 +49,18 @@ export class Player {
             let rotmove = pitchq.MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y))
             rotmove = this.character.GetRotation().MulVec3(rotmove);
             
-            movement = new jolt.Vec3(rotmove.GetX() * this.moveSpeed, rotmove.GetY() * this.moveSpeed, rotmove.GetZ() * this.moveSpeed);
+            movement = new jolt.Vec3(rotmove.GetX(), 
+                rotmove.GetY(), 
+                rotmove.GetZ());
+            
         }
         else {
             let gravity = -9;
             let rotmove = this.character.GetRotation().MulVec3(new jolt.Vec3(this.curmove.x, 0, -this.curmove.y));
-            movement = new jolt.Vec3(rotmove.GetX() * this.moveSpeed, gravity, rotmove.GetZ() * this.moveSpeed);
+            movement = new jolt.Vec3(rotmove.GetX(), gravity, rotmove.GetZ());
         }
+
+        movement = movement.MulFloat(this.moveSpeed )
 
         if (this.shouldSprint) {
             this.shouldSprint = false;
@@ -100,7 +105,7 @@ export class Player {
     curmove = new THREE.Vector2();
     curlook = new THREE.Vector2();
     turnSpeed = 3;
-    moveSpeed = 100;
+    moveSpeed = 10;
     //tried getting the rotation from the character but it didn't work
     //radians
     yaw = Math.PI;

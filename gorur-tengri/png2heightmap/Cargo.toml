@@ -1,0 +1,9 @@
+[package]
+name = "png2heightmap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argh = "0.1.13"
+image = "0.25.9"
+xz2 = "0.1.7"

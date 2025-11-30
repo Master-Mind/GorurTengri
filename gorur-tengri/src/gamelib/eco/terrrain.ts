@@ -8,14 +8,15 @@ import genMeshWGSL from "./shaders/genTerrainMesh.wgsl?raw";
 import heightWGSL from "./shaders/heightFunction.wgsl?raw";
 import { jolt } from "../physics-general";
 import { now } from "three/examples/jsm/libs/tween.module.js";
-import { HDRLoader, RGBELoader, UltraHDRLoader } from "three/examples/jsm/Addons.js";
+import { HDRLoader, RGBELoader, ThreeMFLoader, UltraHDRLoader } from "three/examples/jsm/Addons.js";
+import { QuadMesh } from "three/webgpu";
 const heightFN = wgslFn(heightWGSL);
 const buffFN = wgslFn(genMeshWGSL);
 const computeFN = wgslFn(genWGSL, [heightFN]);
 
 const patchWorldWidth = 256;
-const heightScale = 5000;
-const lodSamplesPerMeter = [2, 1, 1 / 4, 1 / 8, 1 / 8];
+const heightScale = 1000;
+const lodSamplesPerMeter = [1 / 4];
 const texilsPerMeter = 1 / 4;
 let terrainParent = new THREE.Object3D();
 
@@ -99,6 +100,7 @@ class terrainCluster {
         mats: THREE.Matrix4[]
     ) {
         this.material = new THREE.MeshBasicNodeMaterial();
+        this.material.wireframe = false;
         const vNormal = varying(vec3(), 'vNormal');
         //console.log(`Three took ${(now() - comptim)} to generate the heightmap`);
             
@@ -300,11 +302,61 @@ function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vect
 }
 
 let meshes = new Array<terrainCluster>(9);
-const gridsize = 8;
+const gridsize = 64;
 function SetParentPos(epicenter: THREE.Vector3) {
     terrainParent.position.set(Math.round(epicenter.x / gridsize) * gridsize,
      -50, 
      Math.round(epicenter.z / gridsize) * gridsize);
+}
+
+function RestitchTextures(renderer : THREE.WebGPURenderer, textures: THREE.Texture[], texTileCoords: THREE.Vector2[]) : THREE.Texture {
+    const texColumns = Math.sqrt(textures.length);
+    const totalWidth = texColumns * textures[0].width;
+    const renderTarget = new THREE.RenderTarget(totalWidth, totalWidth, {
+        type: textures[0].type,
+        format: textures[0].format,
+        minFilter: THREE.NearestFilter,
+        maxFilter: THREE.NearestFilter,
+        generateMipmaps: false
+    });
+    
+    const currentTarget = renderer.getRenderTarget();
+    const currentAutoClear = renderer.autoClear;
+    let currentViewPort = new THREE.Vector4;
+    renderer.getViewport(currentViewPort);
+
+    const stitchScene = new THREE.Scene();
+    const stitchCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+    const quadGeo = new THREE.PlaneGeometry(2, 2);
+    const quadMat = new THREE.MeshBasicMaterial({ map: null });
+    const quad = new THREE.Mesh(quadGeo, quadMat);
+    stitchScene.add(quad);
+
+    renderer.setRenderTarget(renderTarget);
+    renderer.clear();
+
+    renderer.setRenderTarget(renderTarget);
+    renderer.autoClear = false;
+    renderer.clear(true, true, true);
+    
+    textures.forEach((tex, i) => {
+        const posx = texTileCoords[i].x * tex.width;
+        const posyTopLeft = texTileCoords[i].y * tex.height;
+        const posy = totalWidth - (posyTopLeft + tex.height);
+        quadMat.map = texture;
+        quadMat.needsUpdate = true;
+
+        //console.log(`${posx}, ${posy}, ${tex.width}, ${tex.height}`)
+        renderer.setViewport(posx, posy, tex.width, tex.height);
+        renderer.render(stitchScene, stitchCamera);
+    });
+
+    renderer.setRenderTarget(currentTarget);
+    renderer.autoClear = currentAutoClear;
+    renderer.setViewport(currentViewPort);
+
+    return renderTarget.texture;
 }
 
 export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene, epicenter : THREE.Vector3) {
@@ -319,7 +371,6 @@ export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene
         });
 
         let lodPromises: Promise<void>[] = [];
-        let texPromises: Promise<THREE.Texture>[] = [];
 
         console.log(`Terrain Setup took ${now() - terrainTim}`);
 
@@ -333,24 +384,44 @@ export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene
 
         const loader = new HDRLoader();
         loader.setDataType(THREE.HalfFloatType);
-        
-        texPromises.push(loader.loadAsync("src/data/large/textures/output.hdr"));
+        const textureModules = import.meta.glob('../../data/large/textures/*_0_0.hdr', { eager: false });
+        let texTileCoords: THREE.Vector2[] = [];//not sure why, but the name isn't getting added to each texture
+
+        let texPromises: Promise<THREE.Texture>[] = Object.keys(textureModules).map((path) => {
+            const threepath = path.replace('../..', 'src');
+            //console.log(threepath)
+            const match = threepath.match(/output_(\d+)_(\d+)\.hdr/);
+
+            if (match) {
+                //console.log(`Parsed (${match}), ${match[0]}, ${match[1]}, ${match[2]}`)
+                texTileCoords.push(new THREE.Vector2(parseInt(match[1]), parseInt(match[2])));
+            }
+            else {
+                console.log(`Couldn't parse ${threepath}`)
+            }
+            // Vite will serve these paths; use the same URL for loadAsync
+            return loader.loadAsync(threepath);
+        });
+        //texPromises.push(loader.loadAsync("src/data/large/textures/output_0_0.hdr"));
 
         let centerMat = new Array<THREE.Matrix4>(1);
         centerMat[0] = new THREE.Matrix4();
         centerMat[0].setPosition(-patchWorldWidth / 2, 0, -patchWorldWidth / 2);
+        //console.log(`bottom left: ${-patchWorldWidth / 2}, 0, ${-patchWorldWidth / 2}`)
+        //console.log(`top right: ${-patchWorldWidth / 2 + patchWorldWidth}, 0, ${-patchWorldWidth / 2 + patchWorldWidth}`)
 
         let matFunc = (dirx: number, diry: number) : Array<THREE.Matrix4> => {
-        console.log(`Making patches: {${dirx}, ${diry}}`)
+        //console.log(`Making patches: {${dirx}, ${diry}}`)
             let ret = new Array<THREE.Matrix4>(3);
             let mag = 1;
             for(let i = 0; i < 3; i++) {
                 let width = patchWorldWidth * mag;
                 ret[i] = new THREE.Matrix4();
-                let x = -width / 2 + dirx * width;
-                let z = -width / 2 + diry * width;
-                ret[i].setPosition(x - dirx * mag - 1, 0, z - diry * mag - 1);
-                console.log(`${x / patchWorldWidth}, 0, ${z / patchWorldWidth}`)
+                let x = -width / 2 + dirx * width - dirx * mag;
+                let z = -width / 2 + diry * width - diry * mag;
+                ret[i].setPosition(x, 0, z);
+                //console.log(`bottom left: ${x}, 0, ${z}`)
+                //console.log(`top right: ${x + patchWorldWidth}, 0, ${z + patchWorldWidth}`)
                 ret[i].scale(new THREE.Vector3(mag, 1, mag));
                 mag *= 3;
             }
@@ -380,48 +451,58 @@ export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene
             
             Promise.all(texPromises).then((textures) => {
                 console.log(`Terrain texture loading took ${now() - terrainTim}`);
-                console.log(`Loaded texture with depth ${textures[0].depth}, type ${textures[0].type}, and format ${textures[0].format}`)
-                const texWorldWidth = textures[0].width / texilsPerMeter;
+                const texColumns = Math.sqrt(textures.length);
+                const totalWidth = texColumns * textures[0].width;
+                let finalTex = textures[0];// RestitchTextures(renderer, textures, texTileCoords);
+                textures.forEach((tex) => {
+                    //console.log(`deleting ${tex.name}`)
+                    //tex.dispose();
+                })
+                console.log(`${texColumns}, ${totalWidth}`)
+                console.log(`Loaded texture with depth ${finalTex.depth}, type ${finalTex.type}, and format ${finalTex.format}`)
+                console.log(`Terrain texture restitching took ${now() - terrainTim}`);
                 
-                texes.push(new terrainTex(textures[0], 
+                const texWorldWidth = finalTex.width / texilsPerMeter;
+                
+                texes.push(new terrainTex(finalTex, 
                     new THREE.Vector2(texWorldWidth / 2, texWorldWidth / 2),
                 texWorldWidth));
 
                 texes.forEach((tex) => {
                     let center = new terrainCluster(1);
-                    center.instantiate(tex, patchLODs[1].geo, centerMat);
+                    center.instantiate(tex, patchLODs[0].geo, centerMat);
                     meshes[0] = center;
 
                     let north = new terrainCluster(1);
-                    north.instantiate(tex, patchLODs[1].geo, northMats);
+                    north.instantiate(tex, patchLODs[0].geo, northMats);
                     meshes[1] = north;
                     
                     let northEast = new terrainCluster(1);
-                    northEast.instantiate(tex, patchLODs[1].geo, northEastMats);
+                    northEast.instantiate(tex, patchLODs[0].geo, northEastMats);
                     meshes[2] = northEast;
                     
                     let east = new terrainCluster(1);
-                    east.instantiate(tex, patchLODs[1].geo, eastMats);
+                    east.instantiate(tex, patchLODs[0].geo, eastMats);
                     meshes[3] = east;
                     
                     let southEast = new terrainCluster(1);
-                    southEast.instantiate(tex, patchLODs[1].geo, southEastMats);
+                    southEast.instantiate(tex, patchLODs[0].geo, southEastMats);
                     meshes[4] = southEast;
                     
                     let south = new terrainCluster(1);
-                    south.instantiate(tex, patchLODs[1].geo, southMats);
+                    south.instantiate(tex, patchLODs[0].geo, southMats);
                     meshes[5] = south;
                     
                     let southWest = new terrainCluster(1);
-                    southWest.instantiate(tex, patchLODs[1].geo, southWestMats);
+                    southWest.instantiate(tex, patchLODs[0].geo, southWestMats);
                     meshes[6] = southWest;
                     
                     let west = new terrainCluster(1);
-                    west.instantiate(tex, patchLODs[1].geo, westMats);
+                    west.instantiate(tex, patchLODs[0].geo, westMats);
                     meshes[7] = west;
                     
                     let northWest = new terrainCluster(1);
-                    northWest.instantiate(tex, patchLODs[1].geo, northWestMats);
+                    northWest.instantiate(tex, patchLODs[0].geo, northWestMats);
                     meshes[8] = northWest;
                 });
 
@@ -441,38 +522,28 @@ console.log(`north east range: [${northEastLeftAngle * radToDegree}, ${northEast
 
 const southEastLeftAngle = Math.acos(-(new THREE.Vector3(0.5, 0, -1.5)).normalize().z);
 const southEastRightAngle = Math.acos(-(new THREE.Vector3(1.5, 0,-0.5)).normalize().z);
-console.log(`south east range: ${(new THREE.Vector3(0.5, 0, -1.5)).normalize().z} [${southEastLeftAngle * radToDegree}, ${southEastRightAngle * radToDegree}]`);
+console.log(`south east range: [${southEastLeftAngle * radToDegree}, ${southEastRightAngle * radToDegree}]`);
+//[18.434948822922017, 71.56505117707799]
 const southWestLeftAngle = 2  * Math.PI - Math.acos(-(new THREE.Vector3(-0.5, 0, -1.5)).normalize().z);
 const southWestRightAngle = 2  * Math.PI - Math.acos(-(new THREE.Vector3(-1.5, 0,-0.5)).normalize().z);
 console.log(`south west range: [${southWestLeftAngle * radToDegree}, ${southWestRightAngle * radToDegree}]`);
-
+//[341.565051177078, 288.434948822922]
 const northWestLeftAngle =2  * Math.PI -  Math.acos(-(new THREE.Vector3(-0.5, 0, 1.5)).normalize().z);
 const northWestRightAngle = 2  * Math.PI - Math.acos(-(new THREE.Vector3(-1.5, 0,0.5)).normalize().z);
 console.log(`north west range: [${northWestRightAngle * radToDegree}, ${northWestLeftAngle * radToDegree}]`);
 
-export function TerrainUpdate(epicenter: THREE.Vector3, angle: number, fov: number) {
+export function TerrainUpdate(epicenter: THREE.Vector3, cameraYaw: number, fov: number) {
     SetParentPos(epicenter);
     //buncha  precalculated math bs
-    let leftFovLine = angle - fov * degreeToRadian / 2;
-    if (leftFovLine < 0) {
-        leftFovLine = 2 * Math.PI + leftFovLine;
-    }
-    let rightFovLine = (angle + fov * degreeToRadian / 2) % (2 * Math.PI);
-
-    if (leftFovLine > rightFovLine) {
-        const temp = leftFovLine;
-        leftFovLine = rightFovLine;
-        rightFovLine = temp;
-    }
+    let cameraCompliment = cameraYaw + 2 * Math.PI;
 
     const angleInRange = (left: number, right: number) => {
-        return (leftFovLine > left && leftFovLine < right) ||
-            (rightFovLine > left && rightFovLine < right) ||
-            (left > leftFovLine && left < rightFovLine);
+        return (cameraYaw < right + (fov * degreeToRadian) / 2 && cameraYaw > left - (fov * degreeToRadian) / 2) ||
+            cameraCompliment < right + (fov * degreeToRadian) / 2 && cameraCompliment > left - (fov * degreeToRadian) / 2;
     };
 
     if (meshes[1] && meshes[1].mesh) {
-        //console.log(`center=${angle * radToDegree},left=${leftFovLine * radToDegree},right=${rightFovLine * radToDegree}`)
+        //console.log(`center=${cameraYaw * radToDegree},compliment=${cameraCompliment * radToDegree}`)
         meshes[1].mesh.visible =  angleInRange(Math.PI - Math.PI / 4, Math.PI + Math.PI / 4);
     }
 
@@ -485,7 +556,7 @@ export function TerrainUpdate(epicenter: THREE.Vector3, angle: number, fov: numb
     }
 
     if (meshes[4] && meshes[4].mesh) {
-        meshes[4].mesh.visible =  angleInRange(southEastRightAngle, southEastLeftAngle);
+        meshes[4].mesh.visible =  angleInRange(southEastLeftAngle, southEastRightAngle);
     }
 
     if (meshes[5] && meshes[5].mesh) {
@@ -611,7 +682,7 @@ export function CalcTris() : number {
 
     meshes.forEach((mesh) => {
         if (mesh.mesh && mesh.mesh.visible) {
-            ret += mesh.mesh.count * patchLODs[1].terrainIndices.count / 3;
+            ret += mesh.mesh.count * patchLODs[0].terrainIndices.count / 3;
         }
         
     });

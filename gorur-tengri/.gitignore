@@ -29,3 +29,6 @@ Thumbs.db
 
 # ignore data because I don't want to pay for lfs
 src/data/large
+
+# rust project
+target/

@@ -14,6 +14,7 @@ import { InitCompute } from "~/gamelib/utils/computeHandler";
 import { redirect } from "@solidjs/router";
 import WebGPUBackend from "three/src/renderers/webgpu/WebGPUBackend.js";
 import { now } from "three/examples/jsm/libs/tween.module.js";
+import { FontLoader, TextGeometry } from "three/examples/jsm/Addons.js";
 
 const [rect, setRect] = createSignal({
   height: window.innerHeight,
@@ -57,7 +58,8 @@ export default function GameCanvas() {
     let player = new Player(rect().width, rect().height);
     const boxes : PhysiBox[] = [
     ];
-    const staticbox = new PhysiBox(true);
+    const staticbox1 = new PhysiBox(true);
+    const staticbox2 = new PhysiBox(true);
     let animationFrameId = 0;
     let renderer : THREE.WebGPURenderer;
     let scene :THREE.Scene;
@@ -88,7 +90,22 @@ export default function GameCanvas() {
             setPaused(!paused());
         });
 
-        player.init(inputman, new jolt.RVec3(0, 700, -10));
+        player.init(inputman, new jolt.RVec3(0, 700, 90));
+        staticbox1.init(scene, new jolt.RVec3(0, 698, 90), new jolt.Vec3(5, 1, 5));
+        staticbox2.init(scene, new jolt.RVec3(2, 700, 92), new jolt.Vec3(0.5, 2, 0.5));
+
+        //const loader = new FontLoader();
+        //loader.loadAsync('TODO: Find a font').then((font) => {
+        //    let text = new TextGeometry('About 2 meters', {
+        //        font: font
+        //    });
+        //    text.computeBoundingBox();
+        //    let textMesh = new THREE.Mesh(text);
+        //    textMesh.position.set(0, 700, 92);
+        //    scene.add(textMesh);
+        //});
+
+        scene.fog = new THREE.Fog('white', 100, 4000);
 
         createEffect(() => {
             renderer.setSize(rect().width, rect().height);
@@ -106,14 +123,6 @@ export default function GameCanvas() {
             //box.init(scene, new jolt.RVec3(randFloatSpread(5), randFloatSpread(5) + 5, randFloatSpread(5)));
         }
 
-        let temp = new THREE.Object3D();
-        let temp2 = new THREE.Mesh(new THREE.BoxGeometry())
-        scene.add(temp);
-        scene.add(temp2);
-        staticbox.init(scene, new jolt.RVec3(0, -4, -10), new jolt.Vec3(1, 1, 1));
-
-        temp.add(staticbox.visibox)
-
         let clock = new THREE.Clock();
         let fpsTimer = 0;
         let fpsSamples = 0;
@@ -126,7 +135,6 @@ export default function GameCanvas() {
             }
             let realDT = Math.min(clock.getDelta(),  1 / 30);
             let dt = paused() ? 0 : realDT;
-            temp.position.x += realDT / 10;
             animationFrameId = requestAnimationFrame(animate);
             TerrainUpdate(player.camera.position, player.yaw, 100);
             joltworld.Step(dt, 1);
@@ -169,7 +177,7 @@ export default function GameCanvas() {
             fpsTimer += realDT;
             fpsSamples++;
 
-            if (fpsTimer >= 0.3)
+            if (fpsSamples > 100)
             {
                 // Update FPS counter
                 setFps(Math.round(1 / (fpsTimer / fpsSamples)));
@@ -200,8 +208,10 @@ export default function GameCanvas() {
             box.destroy();
         });
 
-        staticbox.deinit(scene);
-        staticbox.destroy();
+        staticbox1.deinit(scene);
+        staticbox1.destroy();
+        staticbox2.deinit(scene);
+        staticbox2.destroy();
 
         CleanupTerrain(scene);
 
