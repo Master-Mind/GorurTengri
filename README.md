@@ -39,3 +39,12 @@ Add the Twitter Driven Development mindset most web devs have where they're cons
 WHAT? YOU'RE STILL USING GLUBUS? YOU'VE LITERALLY KILLED YOUR OWN PRODUCTIVITY AND OBAMA. TO THE STREETS WITH YOU APOSTATE. TO THE STREETS WHERE THERE IS MUCH WEEPING AND GNASHING OF TEETH."
 
 idk this rant is going too long
+
+edit: nevermind this rant hasn't gone on long enough. I added a feature where I:
+
+1. Convert a 16 bit heightmap texture to a raw 32 bit float array
+2. Split that array up into 4 chunks
+3. Compress each chunk into separate gz files in separate threads
+4. Then in the browser, decompress each chunk and recombine them
+
+Steps 1-3 were done in rust and step 4 was obviously done in Javascript. Both ends of this process are fundamentally doing the same thing. I swear to God, on God, WITH GOD AS MY WITNESS the browser side took 10x longer. I kept getting a browser error that said "Type Error: failed to fetch" It wasn't a type error because all the data types were right, fetch didn't fail because it got status code 200, it failed because the gz file had a few bytes of "trailing garbage". Why tf didn't it say that the decompression failed why didn't it say that rust is supposed to be the hard language not js I'm losing my fuafhkjljasbdfing mind I'm gonna do it for real this time I hate the web I hate the web I hate the web good fucking thing I did so much research into Mongol/Turkic culture for this fucking game so I could move to Kazakhstan and become a goat herder aaaaaaaaaaaaaaaaaaaaaaaaaaaa
