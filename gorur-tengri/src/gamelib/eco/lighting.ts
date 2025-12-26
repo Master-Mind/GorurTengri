@@ -5,7 +5,7 @@ export function InitLighting(scene : THREE.Scene) {
     const sky = new SkyMesh();
     sky.scale.setScalar( 450000 );
 
-    const phi = THREE.MathUtils.degToRad( 45 );
+    const phi = THREE.MathUtils.degToRad( 0 );
     const theta = THREE.MathUtils.degToRad( 180 );
     const sunPosition = new THREE.Vector3().setFromSphericalCoords( 1, phi, theta );
     const sun = new THREE.DirectionalLight();
@@ -18,6 +18,8 @@ export function InitLighting(scene : THREE.Scene) {
 
     scene.add( sky );
 
-    const light = new THREE.HemisphereLight( 0xffffbb, 0x080820, 1 );
+    const light = new THREE.HemisphereLight( 0xffffff, 0x080820, 1 );
     scene.add( light );
+    
+    //scene.fog = new THREE.Fog('white', 100, 4000);
 }

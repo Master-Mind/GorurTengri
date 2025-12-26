@@ -6,6 +6,7 @@ export class PhysiBox {
     constructor(isStatic : boolean){
         let box = new THREE.BoxGeometry(1, 1, 1);
         let mat = new THREE.MeshPhysicalMaterial();
+        mat.color = new THREE.Color(0.4, 1, 1);
         this.visibox = new THREE.Mesh(box, mat);
         
         let shape = new jolt.BoxShape(new jolt.Vec3(0.5, 0.5, 0.5));

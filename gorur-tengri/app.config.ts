@@ -12,8 +12,8 @@ export default defineConfig({
             allowedHosts: ["philtop.local"]
         },
         build: {
-            sourcemap: true,
-            minify: false
+            sourcemap: false,
+            minify: true
         }
     },
     ssr: false

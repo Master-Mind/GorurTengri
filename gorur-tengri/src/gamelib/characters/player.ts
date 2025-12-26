@@ -10,7 +10,7 @@ export class Player {
         settings.mSupportingVolume = new jolt.Plane(jolt.Vec3.prototype.sAxisY(), -1);
         this.character = new jolt.CharacterVirtual(settings, HAMMER_SPACE, new jolt.Quat(), phys);
 
-        this.camera = new THREE.PerspectiveCamera(90, width / height, 0.1, 10000);
+        this.camera = new THREE.PerspectiveCamera(90, width / height, 0.1, 20000);
         this.updateSettings = new jolt.ExtendedUpdateSettings();
     }
 

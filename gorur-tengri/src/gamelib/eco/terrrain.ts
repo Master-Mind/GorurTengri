@@ -1,5 +1,5 @@
 import { mx_perlin_noise_float } from "three/src/nodes/materialx/lib/mx_noise.js";
-import { attribute, transformNormalToView, vec3, varying,  wgslFn, storageTexture, instanceIndex, vec2, uint, storage, attributeArray, texture, positionGeometry, positionLocal, positionWorld, buffer, modelWorldMatrix } from "three/tsl";
+import { attribute, transformNormalToView, vec3, varying, wgslFn, storageTexture, instanceIndex, vec2, uint, storage, attributeArray, texture, positionGeometry, positionLocal, positionWorld, buffer, modelWorldMatrix } from "three/tsl";
 import * as THREE from "three/webgpu";
 import terrainWGSL from "./shaders/terrain.wgsl?raw";
 import terrainFragWGSL from "./shaders/terrainFrag.wgsl?raw";
@@ -8,14 +8,15 @@ import genMeshWGSL from "./shaders/genTerrainMesh.wgsl?raw";
 import heightWGSL from "./shaders/heightFunction.wgsl?raw";
 import { jolt } from "../physics-general";
 import { now } from "three/examples/jsm/libs/tween.module.js";
-import { HDRLoader, RGBELoader, ThreeMFLoader, UltraHDRLoader } from "three/examples/jsm/Addons.js";
+// import { HDRLoader, RGBELoader, ThreeMFLoader, UltraHDRLoader } from "three/examples/jsm/Addons.js";
 import { QuadMesh } from "three/webgpu";
+
 const heightFN = wgslFn(heightWGSL);
 const buffFN = wgslFn(genMeshWGSL);
 const computeFN = wgslFn(genWGSL, [heightFN]);
 
 const patchWorldWidth = 256;
-const heightScale = 1000;
+const heightScale = 5000;
 const lodSamplesPerMeter = [1 / 4];
 const texilsPerMeter = 1 / 4;
 let terrainParent = new THREE.Object3D();
@@ -60,7 +61,6 @@ class terrainPatch {
             offset: this.offset,
             samplesPerMeter: this.samplesPerMeter,
             heightTex: tex.node,
-            heightSampler: tex.node,
             worldWidth: patchWorldWidth,
             texWorldWidth: tex.worldWidth,
             heightScale: heightScale
@@ -99,7 +99,7 @@ class terrainCluster {
         geo: THREE.BufferGeometry,
         mats: THREE.Matrix4[]
     ) {
-        this.material = new THREE.MeshBasicNodeMaterial();
+        this.material = new THREE.MeshToonNodeMaterial();
         this.material.wireframe = false;
         const vNormal = varying(vec3(), 'vNormal');
         //console.log(`Three took ${(now() - comptim)} to generate the heightmap`);
@@ -169,27 +169,33 @@ class terrainCluster {
         }
     }
 
-    material: THREE.MeshBasicNodeMaterial | null = null;
+    material: THREE.MeshToonNodeMaterial | null = null;
     mesh: THREE.InstancedMesh | null = null;
     samplesPerMeter: number;
 }
 
 class terrainTex {
-    constructor(tex: THREE.Texture, offset: THREE.Vector2, worldWidth: number) {
-        tex.magFilter = THREE.LinearFilter;
-        tex.minFilter = THREE.LinearFilter;
+    constructor(tex: THREE.DataTexture, offset: THREE.Vector2, worldWidth: number) {
+        // storage textures aren't sampled, but keep these sane anyway
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
         tex.needsUpdate = true;
+
         this.tex = tex;
         this.offset = offset;
         this.worldWidth = worldWidth;
+
+        // NOTE: bind as storage texture (r32float, read-only in WGSL)
         this.node = texture(this.tex);
     }
 
     dispose() {
         this.tex.dispose();
     }
-    tex: THREE.Texture;
-    node: THREE.TSL.ShaderNodeObject<THREE.TextureNode>;
+
+    tex: THREE.DataTexture;
+    node: any;
     offset: THREE.Vector2;
     worldWidth: number;
 }
@@ -278,241 +284,143 @@ let patchLODs: terrainGeo[] = [];
 let patches: terrainPatch[] = [];
 let texes: terrainTex[] = [];
 
-function getLODLevelFromEpicenter(epicenter : THREE.Vector3, offset : THREE.Vector3) : number {
-    const dist = epicenter.distanceToSquared(offset);
-    const dist1 = patchWorldWidth / 2;
-    const dist2 = patchWorldWidth;
-    const dist3 = patchWorldWidth * 2;
-    const dist4 = patchWorldWidth * 4;
-
-    if (dist < dist1 * dist1) {
-        return 1;
-    }
-    if (dist < dist2 * dist2) {
-        return 1;
-    }
-    if (dist < dist3 * dist3) {
-        return 2;
-    }
-    if (dist < dist4 * dist4) {
-        return 3;
-    }
-
-    return 4;
-}
-
 let meshes = new Array<terrainCluster>(9);
-const gridsize = 64;
+const gridsize = 128;
 function SetParentPos(epicenter: THREE.Vector3) {
     terrainParent.position.set(Math.round(epicenter.x / gridsize) * gridsize,
      -50, 
      Math.round(epicenter.z / gridsize) * gridsize);
 }
 
-function RestitchTextures(renderer : THREE.WebGPURenderer, textures: THREE.Texture[], texTileCoords: THREE.Vector2[]) : THREE.Texture {
-    const texColumns = Math.sqrt(textures.length);
-    const totalWidth = texColumns * textures[0].width;
-    const renderTarget = new THREE.RenderTarget(totalWidth, totalWidth, {
-        type: textures[0].type,
-        format: textures[0].format,
-        minFilter: THREE.NearestFilter,
-        maxFilter: THREE.NearestFilter,
-        generateMipmaps: false
-    });
-    
-    const currentTarget = renderer.getRenderTarget();
-    const currentAutoClear = renderer.autoClear;
-    let currentViewPort = new THREE.Vector4;
-    renderer.getViewport(currentViewPort);
+export function InitTerrain(renderer: THREE.WebGPURenderer, scene: THREE.Scene, epicenter: THREE.Vector3) {
+  console.log("Generating terrain...");
+  try {
+    const terrainTim = now();
+    SetParentPos(epicenter);
+    scene.add(terrainParent);
 
-    const stitchScene = new THREE.Scene();
-    const stitchCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-
-    const quadGeo = new THREE.PlaneGeometry(2, 2);
-    const quadMat = new THREE.MeshBasicMaterial({ map: null });
-    const quad = new THREE.Mesh(quadGeo, quadMat);
-    stitchScene.add(quad);
-
-    renderer.setRenderTarget(renderTarget);
-    renderer.clear();
-
-    renderer.setRenderTarget(renderTarget);
-    renderer.autoClear = false;
-    renderer.clear(true, true, true);
-    
-    textures.forEach((tex, i) => {
-        const posx = texTileCoords[i].x * tex.width;
-        const posyTopLeft = texTileCoords[i].y * tex.height;
-        const posy = totalWidth - (posyTopLeft + tex.height);
-        quadMat.map = texture;
-        quadMat.needsUpdate = true;
-
-        //console.log(`${posx}, ${posy}, ${tex.width}, ${tex.height}`)
-        renderer.setViewport(posx, posy, tex.width, tex.height);
-        renderer.render(stitchScene, stitchCamera);
+    lodSamplesPerMeter.forEach((lod) => {
+      patchLODs.push(new terrainGeo(lod));
     });
 
-    renderer.setRenderTarget(currentTarget);
-    renderer.autoClear = currentAutoClear;
-    renderer.setViewport(currentViewPort);
+    const lodPromises: Promise<void>[] = [];
+    patchLODs.forEach((lod) => {
+      lodPromises.push(lod.instantiate(renderer));
+    });
 
-    return renderTarget.texture;
+    // NEW: load 4 gzipped chunks in parallel (ORDER MATTERS)
+    // Update these filenames to match your actual chunk names.
+    const heightmapPromise = loadR32GzipHeightmapChunksAsStorageTexture(
+      [
+        "/src/data/large/textures/output_0.r32.gz",
+        "/src/data/large/textures/output_1.r32.gz",
+        "/src/data/large/textures/output_2.r32.gz",
+        "/src/data/large/textures/output_3.r32.gz",
+      ],
+      {
+        // optional: set if you know the original dimension (faster + avoids sqrt rounding ambiguity)
+        // expectedSize: 8192,
+        name: "terrainHeightmapR32F",
+      }
+    );
+
+    let centerMat = new Array<THREE.Matrix4>(1);
+    centerMat[0] = new THREE.Matrix4();
+    centerMat[0].setPosition(-patchWorldWidth / 2, 0, -patchWorldWidth / 2);
+    console.log(`Center extent: {${-patchWorldWidth / 2}, ${-patchWorldWidth / 2}} to {${patchWorldWidth / 2}, ${patchWorldWidth / 2}}`);
+
+    let matFunc = (dirx: number, diry: number): Array<THREE.Matrix4> => {
+        let ret = new Array<THREE.Matrix4>(3);
+        let mag = 1;
+        //console.log(`Placing tiles for {${dirx}, ${diry}}`);
+
+        for (let i = 0; i < 4; i++) {
+            let width = patchWorldWidth * mag;
+            ret[i] = new THREE.Matrix4();
+            let x = -width / 2 + dirx * width - dirx * mag * 8;//I get really ugly seems without that 8 there
+            let z = -width / 2 + diry * width - diry * mag * 8;//I really don't care enough to do the math required to figure out why
+            //console.log(`Tile extent: {${x}, ${z}} to {${x + width}, ${z + width}}`);
+            ret[i].setPosition(x, 0, z);
+            ret[i].scale(new THREE.Vector3(mag, 1, mag));
+            mag *= 3;
+        }
+
+        return ret;
+    };
+
+    let northMats = matFunc(0, 1);
+    let northEastMats = matFunc(-1, 1);
+    let eastMats = matFunc(-1, 0);
+    let southEastMats = matFunc(-1, -1);
+    let southMats = matFunc(0, -1);
+    let southWestMats = matFunc(1, -1);
+    let westMats = matFunc(1, 0);
+    let northWestMats = matFunc(1, 1);
+
+    Promise.all(lodPromises).then(() => {
+      console.log(`Terrain lod generation took ${now() - terrainTim}`);
+
+      heightmapPromise.then((finalTex) => {
+        console.log(`Terrain heightmap loading took ${now() - terrainTim}`);
+        console.log(`Loaded heightmap DataTexture ${finalTex.width}x${finalTex.height} type=${finalTex.type} format=${finalTex.format}`);
+
+        const texWorldWidth = finalTex.width / texilsPerMeter;
+
+        const terrainHeightTex = new terrainTex(
+          finalTex,
+          new THREE.Vector2(texWorldWidth / 2, texWorldWidth / 2),
+          texWorldWidth
+        );
+
+        texes.push(terrainHeightTex);
+
+        // instantiate clusters
+        const tex = terrainHeightTex;
+
+        let center = new terrainCluster(1);
+        center.instantiate(tex, patchLODs[0].geo, centerMat);
+        meshes[0] = center;
+
+        let north = new terrainCluster(1);
+        north.instantiate(tex, patchLODs[0].geo, northMats);
+        meshes[1] = north;
+
+        let northEast = new terrainCluster(1);
+        northEast.instantiate(tex, patchLODs[0].geo, northEastMats);
+        meshes[2] = northEast;
+
+        let east = new terrainCluster(1);
+        east.instantiate(tex, patchLODs[0].geo, eastMats);
+        meshes[3] = east;
+
+        let southEast = new terrainCluster(1);
+        southEast.instantiate(tex, patchLODs[0].geo, southEastMats);
+        meshes[4] = southEast;
+
+        let south = new terrainCluster(1);
+        south.instantiate(tex, patchLODs[0].geo, southMats);
+        meshes[5] = south;
+
+        let southWest = new terrainCluster(1);
+        southWest.instantiate(tex, patchLODs[0].geo, southWestMats);
+        meshes[6] = southWest;
+
+        let west = new terrainCluster(1);
+        west.instantiate(tex, patchLODs[0].geo, westMats);
+        meshes[7] = west;
+
+        let northWest = new terrainCluster(1);
+        northWest.instantiate(tex, patchLODs[0].geo, northWestMats);
+        meshes[8] = northWest;
+
+        console.log(`Patch instantiation took ${now() - terrainTim}`);
+      });
+    });
+  } catch (err: any) {
+    console.log(`Terrain gen failed with error: ${err.message}`);
+  }
 }
 
-export function InitTerrain(renderer : THREE.WebGPURenderer, scene : THREE.Scene, epicenter : THREE.Vector3) {
-    console.log("Generating terrain...");
-    try {
-        const terrainTim = now();
-        SetParentPos(epicenter);
-        scene.add(terrainParent);
-
-        lodSamplesPerMeter.forEach((lod) => {
-            patchLODs.push(new terrainGeo(lod));
-        });
-
-        let lodPromises: Promise<void>[] = [];
-
-        console.log(`Terrain Setup took ${now() - terrainTim}`);
-
-
-        patchLODs.forEach((lod) => {
-            lodPromises.push(lod.instantiate(renderer));
-        });
-        console.log(`Terrain LOD Promise Setup took ${now() - terrainTim}`);
-        
-        console.log(`Terrain Promise Setup took ${now() - terrainTim}`);
-
-        const loader = new HDRLoader();
-        loader.setDataType(THREE.HalfFloatType);
-        const textureModules = import.meta.glob('../../data/large/textures/*_0_0.hdr', { eager: false });
-        let texTileCoords: THREE.Vector2[] = [];//not sure why, but the name isn't getting added to each texture
-
-        let texPromises: Promise<THREE.Texture>[] = Object.keys(textureModules).map((path) => {
-            const threepath = path.replace('../..', 'src');
-            //console.log(threepath)
-            const match = threepath.match(/output_(\d+)_(\d+)\.hdr/);
-
-            if (match) {
-                //console.log(`Parsed (${match}), ${match[0]}, ${match[1]}, ${match[2]}`)
-                texTileCoords.push(new THREE.Vector2(parseInt(match[1]), parseInt(match[2])));
-            }
-            else {
-                console.log(`Couldn't parse ${threepath}`)
-            }
-            // Vite will serve these paths; use the same URL for loadAsync
-            return loader.loadAsync(threepath);
-        });
-        //texPromises.push(loader.loadAsync("src/data/large/textures/output_0_0.hdr"));
-
-        let centerMat = new Array<THREE.Matrix4>(1);
-        centerMat[0] = new THREE.Matrix4();
-        centerMat[0].setPosition(-patchWorldWidth / 2, 0, -patchWorldWidth / 2);
-        //console.log(`bottom left: ${-patchWorldWidth / 2}, 0, ${-patchWorldWidth / 2}`)
-        //console.log(`top right: ${-patchWorldWidth / 2 + patchWorldWidth}, 0, ${-patchWorldWidth / 2 + patchWorldWidth}`)
-
-        let matFunc = (dirx: number, diry: number) : Array<THREE.Matrix4> => {
-        //console.log(`Making patches: {${dirx}, ${diry}}`)
-            let ret = new Array<THREE.Matrix4>(3);
-            let mag = 1;
-            for(let i = 0; i < 3; i++) {
-                let width = patchWorldWidth * mag;
-                ret[i] = new THREE.Matrix4();
-                let x = -width / 2 + dirx * width - dirx * mag;
-                let z = -width / 2 + diry * width - diry * mag;
-                ret[i].setPosition(x, 0, z);
-                //console.log(`bottom left: ${x}, 0, ${z}`)
-                //console.log(`top right: ${x + patchWorldWidth}, 0, ${z + patchWorldWidth}`)
-                ret[i].scale(new THREE.Vector3(mag, 1, mag));
-                mag *= 3;
-            }
-
-            return ret;
-        };
-
-        let northMats = matFunc(0, 1);
-        //-0.5,0,0.5
-        //-1.5, 0, 1.5
-        let northEastMats = matFunc(-1, 1);
-        //console.log(`forward right corner angle:${Math.acos((new THREE.Vector3(1.5, 0, 1.5)).normalize().z)}`)
-        //console.log(`forward corner angle:${Math.acos((new THREE.Vector3(-1.5, 0, 1.5)).normalize().z)}`)
-        //console.log(`forward corner angle:${Math.PI / 4}`)
-        let eastMats = matFunc(-1, 0);
-        let southEastMats = matFunc(-1, -1);
-        let southMats = matFunc(0, -1);
-        //-0.5,0,-1.5
-        //-1.5,0,-4.5
-        //-4.5,0,-1.5
-        let southWestMats = matFunc(1, -1);
-        let westMats = matFunc(1, 0);
-        let northWestMats = matFunc(1, 1);
-
-        Promise.all(lodPromises).then(() => {
-            console.log(`Terrain lod generation took ${now() - terrainTim}`);
-            
-            Promise.all(texPromises).then((textures) => {
-                console.log(`Terrain texture loading took ${now() - terrainTim}`);
-                const texColumns = Math.sqrt(textures.length);
-                const totalWidth = texColumns * textures[0].width;
-                let finalTex = textures[0];// RestitchTextures(renderer, textures, texTileCoords);
-                textures.forEach((tex) => {
-                    //console.log(`deleting ${tex.name}`)
-                    //tex.dispose();
-                })
-                console.log(`${texColumns}, ${totalWidth}`)
-                console.log(`Loaded texture with depth ${finalTex.depth}, type ${finalTex.type}, and format ${finalTex.format}`)
-                console.log(`Terrain texture restitching took ${now() - terrainTim}`);
-                
-                const texWorldWidth = finalTex.width / texilsPerMeter;
-                
-                texes.push(new terrainTex(finalTex, 
-                    new THREE.Vector2(texWorldWidth / 2, texWorldWidth / 2),
-                texWorldWidth));
-
-                texes.forEach((tex) => {
-                    let center = new terrainCluster(1);
-                    center.instantiate(tex, patchLODs[0].geo, centerMat);
-                    meshes[0] = center;
-
-                    let north = new terrainCluster(1);
-                    north.instantiate(tex, patchLODs[0].geo, northMats);
-                    meshes[1] = north;
-                    
-                    let northEast = new terrainCluster(1);
-                    northEast.instantiate(tex, patchLODs[0].geo, northEastMats);
-                    meshes[2] = northEast;
-                    
-                    let east = new terrainCluster(1);
-                    east.instantiate(tex, patchLODs[0].geo, eastMats);
-                    meshes[3] = east;
-                    
-                    let southEast = new terrainCluster(1);
-                    southEast.instantiate(tex, patchLODs[0].geo, southEastMats);
-                    meshes[4] = southEast;
-                    
-                    let south = new terrainCluster(1);
-                    south.instantiate(tex, patchLODs[0].geo, southMats);
-                    meshes[5] = south;
-                    
-                    let southWest = new terrainCluster(1);
-                    southWest.instantiate(tex, patchLODs[0].geo, southWestMats);
-                    meshes[6] = southWest;
-                    
-                    let west = new terrainCluster(1);
-                    west.instantiate(tex, patchLODs[0].geo, westMats);
-                    meshes[7] = west;
-                    
-                    let northWest = new terrainCluster(1);
-                    northWest.instantiate(tex, patchLODs[0].geo, northWestMats);
-                    meshes[8] = northWest;
-                });
-
-                console.log(`Patch instantiation took ${now() - terrainTim}`);
-            });
-        });
-    } catch(err : any) {
-        console.log(`Terrain gen failed with error: ${err.message}`);
-    }
-}
 const degreeToRadian = Math.PI / 180;
 const radToDegree = 180 / Math.PI;
 
@@ -712,3 +620,90 @@ export function CleanupTerrain(scene: THREE.Scene) {
     patchLODs = [];
     patches = [];
 }
+
+type HeightmapChunkWorkerOk = { url: string; buffer: ArrayBuffer };
+type HeightmapChunkWorkerErr = { url: string; error: string };
+
+function runHeightmapChunkWorker(url: string): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./workers/heightmapChunkWorker.ts", import.meta.url), { type: "module" });
+
+    const cleanup = () => worker.terminate();
+
+    worker.onmessage = (ev: MessageEvent<HeightmapChunkWorkerOk | HeightmapChunkWorkerErr>) => {
+      const data: any = ev.data;
+      if (data?.error) {
+        cleanup();
+        reject(new Error(`Chunk worker failed for ${url}: ${data.error}`));
+        return;
+      }
+
+      cleanup();
+      resolve((data as HeightmapChunkWorkerOk).buffer);
+    };
+
+    worker.onerror = (e) => {
+      cleanup();
+      reject(new Error(`Chunk worker crashed for ${url}: ${e.message}`));
+    };
+
+    worker.postMessage({ url });
+  });
+}
+
+function concatArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
+  const total = buffers.reduce((sum, b) => sum + b.byteLength, 0);
+  const out = new Uint8Array(total);
+
+  let offset = 0;
+  for (const b of buffers) {
+    out.set(new Uint8Array(b), offset);
+    offset += b.byteLength;
+  }
+  return out.buffer;
+}
+
+async function loadR32GzipHeightmapChunksAsStorageTexture(
+  urlsInOrder: string[],
+  opts?: { expectedSize?: number; name?: string }
+): Promise<THREE.DataTexture> {
+  if (!urlsInOrder.length) throw new Error("No chunk URLs provided.");
+
+  // decompress each chunk in its own worker (in parallel)
+  const chunkBuffers = await Promise.all(urlsInOrder.map((u) => runHeightmapChunkWorker(u)));
+
+  const ab = concatArrayBuffers(chunkBuffers);
+
+  if ((ab.byteLength % 4) !== 0) {
+    throw new Error(`Heightmap byteLength (${ab.byteLength}) is not divisible by 4 (expected float32 stream).`);
+  }
+
+  const floatCount = ab.byteLength / 4;
+  const data = new Float32Array(ab);
+
+  // Determine dimensions
+  let size: number;
+  if (opts?.expectedSize) {
+    size = opts.expectedSize;
+    if (size * size !== floatCount) {
+      throw new Error(`expectedSize=${size} does not match floatCount=${floatCount} (expected ${size * size}).`);
+    }
+  } else {
+    const sizeF = Math.sqrt(floatCount);
+    size = Math.round(sizeF);
+    if (size * size !== floatCount) {
+      throw new Error(`Heightmap is not a perfect square: floats=${floatCount}, sqrt=${sizeF}`);
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.FloatType);
+  tex.name = opts?.name ?? "terrainHeightmapR32F_chunks";
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+
+  return tex;
+}
+
+// (old loadR32GzipHeightmapAsStorageTexture can be deleted if unused)

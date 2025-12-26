@@ -69,7 +69,6 @@ export default function GameCanvas() {
         console.log("mounted");
         scene = new THREE.Scene();
 
-        //TODO: Check for webgpu support and render an instruction component
         renderer = new THREE.WebGPURenderer({ canvas: canvasRef, antialias: true });
         let computeRenderer = new THREE.WebGPURenderer({canvas:undefined})
         await renderer.init();
@@ -90,9 +89,9 @@ export default function GameCanvas() {
             setPaused(!paused());
         });
 
-        player.init(inputman, new jolt.RVec3(0, 700, 90));
-        staticbox1.init(scene, new jolt.RVec3(0, 698, 90), new jolt.Vec3(5, 1, 5));
-        staticbox2.init(scene, new jolt.RVec3(2, 700, 92), new jolt.Vec3(0.5, 2, 0.5));
+        player.init(inputman, new jolt.RVec3(10, 1007, 85));
+        staticbox1.init(scene, new jolt.RVec3(10, 1005, 85), new jolt.Vec3(5, 1, 5));
+        staticbox2.init(scene, new jolt.RVec3(12, 1007, 87), new jolt.Vec3(0.5, 2, 0.5));
 
         //const loader = new FontLoader();
         //loader.loadAsync('TODO: Find a font').then((font) => {
@@ -104,8 +103,6 @@ export default function GameCanvas() {
         //    textMesh.position.set(0, 700, 92);
         //    scene.add(textMesh);
         //});
-
-        scene.fog = new THREE.Fog('white', 100, 4000);
 
         createEffect(() => {
             renderer.setSize(rect().width, rect().height);

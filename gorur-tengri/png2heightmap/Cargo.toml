@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 argh = "0.1.13"
 image = "0.25.9"
-xz2 = "0.1.7"
+flate2 = "1.1.5"
